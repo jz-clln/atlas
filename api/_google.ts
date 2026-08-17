@@ -105,6 +105,23 @@ export async function fetchCourseWork(
   return data.courseWork ?? [];
 }
 
+export async function fetchSubmissionState(
+  courseId: string,
+  courseWorkId: string,
+  accessToken: string
+): Promise<string | null> {
+  try {
+    const data = await classroomFetch(
+      `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions?userId=me`,
+      accessToken
+    );
+    const submission = data.studentSubmissions?.[0];
+    return submission?.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function combineDueDateTime(
   dueDate?: GoogleCourseWork["dueDate"],
   dueTime?: GoogleCourseWork["dueTime"]

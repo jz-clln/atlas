@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { signOut } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { useClassroomSync } from "../lib/useClassroomSync";
@@ -6,6 +7,7 @@ import type { CourseworkItem } from "../lib/useClassroomSync";
 export function Dashboard() {
   const { session } = useSession();
   const { courses, coursework, loading, error, refetch } = useClassroomSync();
+  const [showDone, setShowDone] = useState(false);
 
   const user = session?.user;
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
@@ -14,7 +16,10 @@ export function Dashboard() {
   const timeGreeting =
     hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : hour < 22 ? "Evening" : "Still up, huh";
 
-  const upcoming = coursework
+  const active = coursework.filter((c) => !c.is_done);
+  const done = coursework.filter((c) => c.is_done);
+
+  const upcoming = active
     .filter((c) => c.due_at)
     .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
 
@@ -48,7 +53,7 @@ export function Dashboard() {
               ? "Pulling in your classes…"
               : dueThisWeek.length > 0
               ? `${dueThisWeek.length} thing${dueThisWeek.length === 1 ? "" : "s"} due this week.`
-              : "Nothing due this week — you're clear."}
+              : "Nothing due this week. Great work!"}
           </span>
         </h2>
 
@@ -61,10 +66,10 @@ export function Dashboard() {
           </div>
         )}
 
-        {!loading && !error && coursework.length === 0 && (
+        {!loading && !error && active.length === 0 && (
           <p className="mt-6 text-sm leading-relaxed text-charcoal">
-            No active coursework found. Either you're all caught up, or your
-            classes aren't posting assignments through Classroom.
+            Nothing pending. Everything's either turned in or there's nothing
+            posted yet.
           </p>
         )}
 
@@ -74,6 +79,25 @@ export function Dashboard() {
               <CourseworkRow key={item.id} item={item} courseName={courseName(item.course_id)} />
             ))}
           </ul>
+        )}
+
+        {done.length > 0 && (
+          <div className="mt-8">
+            <button
+              onClick={() => setShowDone((v) => !v)}
+              className="text-xs font-medium text-slate hover:text-charcoal"
+            >
+              {showDone ? "Hide" : "Show"} {done.length} finished
+            </button>
+
+            {showDone && (
+              <ul className="mt-4 divide-y divide-mist border-y border-mist opacity-60">
+                {done.map((item) => (
+                  <CourseworkRow key={item.id} item={item} courseName={courseName(item.course_id)} />
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </main>
     </div>

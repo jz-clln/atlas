@@ -35,3 +35,5 @@ vite.config.*.timestamp-*
 
 # Local development
 *.local
+.vercel
+.env*

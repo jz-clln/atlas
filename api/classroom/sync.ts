@@ -4,20 +4,23 @@ import {
   getValidAccessToken,
   fetchCourses,
   fetchCourseWork,
+  fetchSubmissionState,
   combineDueDateTime,
 } from "../_google";
 
+const DONE_STATES = new Set(["TURNED_IN", "RETURNED"]);
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const user = await verifyUser(req);
-  if (!user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
   try {
+    if (req.method !== "GET") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const user = await verifyUser(req);
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const accessToken = await getValidAccessToken(user.id);
     const admin = supabaseAdmin();
 
@@ -43,7 +46,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (const course of googleCourses) {
       const work = await fetchCourseWork(course.id, accessToken);
+
       for (const item of work) {
+        const submissionState = await fetchSubmissionState(
+          course.id,
+          item.id,
+          accessToken
+        );
+
         courseworkRows.push({
           id: item.id,
           course_id: course.id,
@@ -53,6 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           due_at: combineDueDateTime(item.dueDate, item.dueTime),
           work_type: item.workType ?? null,
           state: item.state ?? null,
+          submission_state: submissionState,
+          is_done: submissionState ? DONE_STATES.has(submissionState) : false,
           alternate_link: item.alternateLink ?? null,
           last_synced_at: new Date().toISOString(),
         });

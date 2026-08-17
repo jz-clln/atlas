@@ -14,6 +14,8 @@ export type CourseworkItem = {
   due_at: string | null;
   work_type: string | null;
   alternate_link: string | null;
+  submission_state: string | null;
+  is_done: boolean;
 };
 
 export function useClassroomSync() {

@@ -3,6 +3,7 @@ import { signOut } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { useClassroomSync } from "../lib/useClassroomSync";
 import type { CourseworkItem } from "../lib/useClassroomSync";
+import { LoadingScreen } from "../components/LoadingScreen";
 
 export function Dashboard() {
   const { session } = useSession();
@@ -11,6 +12,10 @@ export function Dashboard() {
 
   const user = session?.user;
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
+
+  if (loading) {
+    return <LoadingScreen label={`Looking for your assignments, ${firstName}`} />;
+  }
 
   const hour = new Date().getHours();
   const timeGreeting =
@@ -49,11 +54,9 @@ export function Dashboard() {
           {timeGreeting}, {firstName}.
           <br />
           <span className="text-charcoal">
-            {loading
-              ? "Pulling in your classes…"
-              : dueThisWeek.length > 0
+            {dueThisWeek.length > 0
               ? `${dueThisWeek.length} thing${dueThisWeek.length === 1 ? "" : "s"} due this week.`
-              : "Nothing due this week. Great work!"}
+              : "Nothing due this week — you're clear."}
           </span>
         </h2>
 

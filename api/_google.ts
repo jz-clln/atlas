@@ -157,6 +157,28 @@ export async function fetchCourseWork(
   return data.courseWork ?? [];
 }
 
+// --- Announcements ---
+
+type GoogleAnnouncement = {
+  id: string;
+  text: string;
+  state?: string;
+  alternateLink?: string;
+  creationTime?: string;
+  updateTime?: string;
+};
+
+export async function fetchAnnouncements(
+  courseId: string,
+  accessToken: string
+): Promise<GoogleAnnouncement[]> {
+  const data = await classroomFetch(
+    `/courses/${courseId}/announcements?orderBy=updateTime desc`,
+    accessToken
+  );
+  return data.announcements ?? [];
+}
+
 // Fetches full detail for a single task — used for on-demand "explain this
 // assignment" lookups from the assistant chat (Phase 3), so we don't have to
 // wait for a full sync to get the latest description/materials for one item.

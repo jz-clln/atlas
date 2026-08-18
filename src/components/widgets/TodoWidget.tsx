@@ -48,10 +48,10 @@ export function TodoWidget({ courses = [] }: Props) {
   }, [userId]);
 
   async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 
   async function addTodo() {
     const text = draft.trim();

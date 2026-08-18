@@ -11,6 +11,8 @@ import { CalendarWidget } from "../components/widgets/CalendarWidget";
 import { ProgressWidget } from "../components/widgets/ProgressWidget";
 import { TodoWidget } from "../components/widgets/TodoWidget";
 import { NotesWidget } from "../components/widgets/NotesWidget";
+import { NotificationsFeed } from "../components/widgets/NotificationsFeed";
+import { ScheduleWidget } from "../components/widgets/ScheduleWidget";
 import { GoalsWidget } from "../components/widgets/GoalsWidget";
 import { StudyPlannerWidget } from "../components/widgets/StudyPlannerWidget";
 import { SpotifyWidget } from "../components/widgets/SpotifyWidget";
@@ -143,9 +145,11 @@ export function Dashboard() {
           </div>
 
           <div className="space-y-4">
+            <NotificationsFeed />
             <ClockWidget />
             <ProgressWidget completed={done.length} total={coursework.length} />
             <CalendarWidget dueDates={dueDates} />
+            <ScheduleWidget courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
             <TodoWidget courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
             <NotesWidget />
             <GoalsWidget />

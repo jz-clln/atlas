@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { useSession } from "../../lib/useSession";
 import { AtlasOrb } from "../AtlasOrb";
 import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
 
@@ -9,10 +10,18 @@ type Props = {
 
 type AtlasMessage = { role: "user" | "atlas"; text: string };
 
-type ChatAction = {
-  type: "create_classroom_task";
-  task: PendingClassroomTask;
-};
+type ChatAction =
+  | { type: "create_classroom_task"; task: PendingClassroomTask }
+  | {
+      type: "set_class_schedule";
+      schedule: {
+        courseId: string;
+        courseName: string;
+        daysOfWeek: number[];
+        startTime: string;
+        endTime: string;
+      };
+    };
 
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
 // System).
@@ -31,12 +40,41 @@ const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 
 export function AtlasWidget({ greeting }: Props) {
+  const { session } = useSession();
+  const userId = session?.user?.id;
+
   const [draft, setDraft] = useState("");
   const [history, setHistory] = useState<AtlasMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTask, setPendingTask] = useState<PendingClassroomTask | null>(null);
+  const [mode, setMode] = useState<"idle" | "notified">("idle");
+
+  // Atlas speaks up on its own the moment the cron job finds a new
+  // Classroom announcement — no chat message from the user required.
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`atlas-notifications:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const n = payload.new as { title: string; body: string; kind?: string };
+          const icon = n.kind === "deadline" ? "⏰ " : n.kind === "no_class" ? "📭 " : "";
+          setHistory((h) => [...h, { role: "atlas", text: `${icon}${n.title}: ${n.body}` }]);
+          setMode("notified");
+          setTimeout(() => setMode("idle"), 4000);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   async function authHeaders(): Promise<Record<string, string>> {
     const { data } = await supabase.auth.getSession();
@@ -64,8 +102,25 @@ export function AtlasWidget({ greeting }: Props) {
 
       const data: { reply: string; action: ChatAction | null } = await res.json();
       setHistory([...nextHistory, { role: "atlas", text: data.reply }]);
+
       if (data.action?.type === "create_classroom_task") {
         setPendingTask(data.action.task);
+      } else if (data.action?.type === "set_class_schedule" && userId) {
+        // No Classroom posting involved, so this saves right away rather
+        // than needing an approve/cancel card.
+        const s = data.action.schedule;
+        await supabase.from("class_schedules").upsert(
+          {
+            user_id: userId,
+            course_id: s.courseId,
+            course_name: s.courseName,
+            days_of_week: s.daysOfWeek,
+            start_time: s.startTime,
+            end_time: s.endTime,
+          },
+          { onConflict: "user_id,course_id" }
+        );
+        setHistory((h) => [...h, { role: "atlas", text: `Saved the schedule for ${s.courseName}.` }]);
       }
     } catch {
       setError("Couldn't reach Atlas — check that /api/atlas/chat is deployed.");
@@ -102,7 +157,7 @@ export function AtlasWidget({ greeting }: Props) {
   return (
     <div className="w-full rounded-3xl border border-mist bg-ink p-6 text-white">
       <div className="flex items-center gap-3">
-        <AtlasOrb mode={sending ? "thinking" : "idle"} size={48} />
+        <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-white/60">Atlas</p>
           <p className="text-sm text-white/90">{greeting}</p>

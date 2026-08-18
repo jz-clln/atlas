@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { supabase } from "../../lib/supabase";
+import { AtlasOrb } from "../AtlasOrb";
+import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
 
 type Props = {
   greeting: string;
@@ -6,26 +9,40 @@ type Props = {
 
 type AtlasMessage = { role: "user" | "atlas"; text: string };
 
+type ChatAction = {
+  type: "create_classroom_task";
+  task: PendingClassroomTask;
+};
+
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
-// System). Every other widget on the dashboard is meant to eventually be
-// readable/actionable by Atlas — this is where that shows up visually.
+// System).
 //
-// Wiring notes for when the backend endpoint exists:
-// - Point ATLAS_ENDPOINT at your route (e.g. POST /api/atlas/chat).
-// - Expected request body: { message: string, history: AtlasMessage[] }
-// - Expected response body: { reply: string }
-// - Auth: send the Supabase session's access token so the endpoint can scope
-//   Atlas's tool access (todos/notes/coursework) to that user.
-// - Voice: once you add speech-to-text, feed its transcript into sendMessage
-//   the same way typed input is handled below — the mic button just needs
-//   its handler swapped in.
-const ATLAS_ENDPOINT = "/api/atlas/chat";
+// Contract with the backend (see api/atlas/chat.ts):
+// - POST /api/atlas/chat, body: { message: string, history: AtlasMessage[] }
+// - Auth: Supabase access token in the Authorization header
+// - Response: { reply: string, action: null | ChatAction }
+// - The server is expected to load the user's todos, notes, courses, and
+//   coursework and give Atlas all of it as context — Atlas should never
+//   have to be told what's on the dashboard, it should already know.
+// - If action.type is "create_classroom_task", Atlas is PROPOSING a task —
+//   it must never be posted without the user clicking "Post to Classroom"
+//   on the confirmation card below.
+const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
+const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 
 export function AtlasWidget({ greeting }: Props) {
   const [draft, setDraft] = useState("");
   const [history, setHistory] = useState<AtlasMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingTask, setPendingTask] = useState<PendingClassroomTask | null>(null);
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -38,26 +55,54 @@ export function AtlasWidget({ greeting }: Props) {
     setSending(true);
 
     try {
-      const res = await fetch(ATLAS_ENDPOINT, {
+      const res = await fetch(ATLAS_CHAT_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
         body: JSON.stringify({ message: trimmed, history }),
       });
       if (!res.ok) throw new Error(`Atlas endpoint returned ${res.status}`);
 
-      const data = await res.json();
+      const data: { reply: string; action: ChatAction | null } = await res.json();
       setHistory([...nextHistory, { role: "atlas", text: data.reply }]);
+      if (data.action?.type === "create_classroom_task") {
+        setPendingTask(data.action.task);
+      }
     } catch {
-      setError("Couldn't reach Atlas — the backend endpoint isn't live yet.");
+      setError("Couldn't reach Atlas — check that /api/atlas/chat is deployed.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function approveTask() {
+    if (!pendingTask) return;
+    setPosting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(CLASSROOM_CREATE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify(pendingTask),
+      });
+      if (!res.ok) throw new Error(`Classroom endpoint returned ${res.status}`);
+
+      setHistory((h) => [
+        ...h,
+        { role: "atlas", text: `Posted "${pendingTask.title}" to ${pendingTask.courseName}.` },
+      ]);
+      setPendingTask(null);
+    } catch {
+      setError("Couldn't post to Classroom — check /api/classroom/create-task.");
+    } finally {
+      setPosting(false);
     }
   }
 
   return (
     <div className="w-full rounded-3xl border border-mist bg-ink p-6 text-white">
       <div className="flex items-center gap-3">
-        <span className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-white/80 to-white/20" />
+        <AtlasOrb mode={sending ? "thinking" : "idle"} size={48} />
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-white/60">Atlas</p>
           <p className="text-sm text-white/90">{greeting}</p>
@@ -76,6 +121,15 @@ export function AtlasWidget({ greeting }: Props) {
             </li>
           ))}
         </ul>
+      )}
+
+      {pendingTask && (
+        <PendingTaskCard
+          task={pendingTask}
+          sending={posting}
+          onApprove={approveTask}
+          onCancel={() => setPendingTask(null)}
+        />
       )}
 
       <form
@@ -106,7 +160,7 @@ export function AtlasWidget({ greeting }: Props) {
         </button>
       </form>
       <p className="mt-2 text-[11px] text-white/40">
-        {error ?? "Voice commands are coming soon — the chat above is live once you build the backend endpoint."}
+        {error ?? "Voice commands are coming soon. Atlas always asks before posting anything to Classroom."}
       </p>
     </div>
   );

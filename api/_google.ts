@@ -201,3 +201,38 @@ export function combineDueDateTime(
   );
   return d.toISOString();
 }
+
+// --- Append this to the bottom of api/_google.ts ---
+// Pairs with fetchCourseWork/fetchCourseWorkDetail above, but POSTs a new
+// courseWork item instead of reading. Used by api/classroom/create-task.ts,
+// which only ever calls this after the user has explicitly confirmed.
+
+export async function createCourseWork(
+  courseId: string,
+  accessToken: string,
+  courseWork: {
+    title: string;
+    description?: string;
+    workType?: string;
+    state?: string;
+    dueDate?: { year: number; month: number; day: number };
+    dueTime?: { hours?: number; minutes?: number };
+  }
+): Promise<{ id: string; alternateLink: string }> {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(courseWork),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Classroom API error (${res.status}): ${body}`);
+  }
+  return res.json();
+}

@@ -50,6 +50,17 @@ export function Dashboard() {
     return courses.find((c) => c.id === courseId)?.name ?? "Unknown course";
   }
 
+  // Atlas's heads-up, built from what's actually synced — no classes posted,
+  // nothing due, or a pointer to the most urgent thing coming up.
+  const atlasBrief =
+    coursework.length === 0
+      ? "Nothing's come through from Classroom yet — no courses or coursework synced."
+      : active.length === 0
+        ? "Everything's turned in. Nothing pending across any of your classes."
+        : dueThisWeek.length === 0
+          ? `${active.length} open item${active.length === 1 ? "" : "s"}, but nothing due in the next 7 days.`
+          : `${dueThisWeek.length} due this week — next up is "${upcoming[0].title}" in ${courseName(upcoming[0].course_id)}.`;
+
   return (
     <div className="min-h-screen bg-cloud">
       <header className="flex items-center justify-between border-b border-mist px-8 py-5">
@@ -63,13 +74,7 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl px-8 py-16">
-        <AtlasWidget
-          greeting={
-            dueThisWeek.length > 0
-              ? `${dueThisWeek.length} thing${dueThisWeek.length === 1 ? "" : "s"} due this week — want a rundown?`
-              : "You're all clear for now."
-          }
-        />
+        <AtlasWidget greeting={atlasBrief} />
 
         <h2 className="mt-10 text-3xl font-semibold leading-snug text-ink">
           Good {timeGreeting}, {firstName}.
@@ -141,7 +146,7 @@ export function Dashboard() {
             <ClockWidget />
             <ProgressWidget completed={done.length} total={coursework.length} />
             <CalendarWidget dueDates={dueDates} />
-            <TodoWidget />
+            <TodoWidget courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
             <NotesWidget />
             <GoalsWidget />
             <StudyPlannerWidget />

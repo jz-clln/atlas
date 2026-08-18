@@ -1,116 +1,84 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 
-type AtlasOrbProps = {
-  /**
-   * "idle" — eyes follow the cursor, gentle breathing scale (default, used on Login).
-   * "searching" — eyes sweep on their own in a scan pattern, orb hops/tilts as if
-   * looking around for something. Used on loading screens.
-   */
-  mode?: "idle" | "searching";
+type AtlasMode = "idle" | "searching" | "listening" | "thinking";
+
+type Props = {
+  mode?: AtlasMode;
+  size?: number;
 };
 
-const SCAN_SEQUENCE: { x: number; y: number }[] = [
-  { x: 0, y: 0 },
-  { x: -5, y: 0 },
-  { x: -5, y: 0 },
-  { x: 0, y: 0 },
-  { x: 5, y: 0 },
-  { x: 5, y: 0 },
-  { x: 0, y: 0 },
-  { x: 0, y: -3 },
-  { x: 0, y: 0 },
-];
-
-export function AtlasOrb({ mode = "idle" }: AtlasOrbProps) {
-  const orbRef = useRef<HTMLDivElement>(null);
-  const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
+// Atlas's face. A black circle with two white eyes that drift and blink on
+// their own — no input needed. `mode` changes the eyes' personality:
+// - idle: slow, occasional glances (default resting state)
+// - searching: quicker, wider scanning (e.g. while syncing Classroom)
+// - listening: eyes settle toward center (reserved for future voice input)
+// - thinking: slower drift, mostly upward (while waiting on a reply)
+export function AtlasOrb({ mode = "idle", size = 72 }: Props) {
+  const [look, setLook] = useState({ x: 0, y: 0 });
   const [blinking, setBlinking] = useState(false);
+  const wanderRef = useRef<ReturnType<typeof setTimeout>>();
+  const blinkRef = useRef<ReturnType<typeof setInterval>>();
 
-  // Idle mode: eyes follow the cursor within a small radius.
+  const range = mode === "searching" ? 5 : mode === "thinking" ? 3 : 2.5;
+  const baseDelay = mode === "searching" ? 450 : mode === "listening" ? 1600 : 1100;
+
   useEffect(() => {
-    if (mode !== "idle") return;
-
-    function handleMouseMove(e: MouseEvent) {
-      const orb = orbRef.current;
-      if (!orb) return;
-      const rect = orb.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = e.clientX - cx;
-      const dy = e.clientY - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const maxOffset = 5;
-      const falloff = Math.min(dist, 240) / 240;
-      setEyeOffset({
-        x: (dx / dist) * maxOffset * falloff,
-        y: (dy / dist) * maxOffset * falloff,
-      });
-    }
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mode]);
-
-  // Searching mode: eyes sweep through a scan pattern on their own,
-  // like ATLAS is scanning the room for your assignments.
-  useEffect(() => {
-    if (mode !== "searching") return;
-
-    let index = 0;
-    const intervalId = window.setInterval(() => {
-      index = (index + 1) % SCAN_SEQUENCE.length;
-      setEyeOffset(SCAN_SEQUENCE[index]);
-    }, 650);
-
-    return () => window.clearInterval(intervalId);
-  }, [mode]);
-
-  // Blinking runs in both modes.
-  useEffect(() => {
-    let timeoutId: number;
-    function scheduleBlink() {
-      const delay = 2600 + Math.random() * 3400;
-      timeoutId = window.setTimeout(() => {
-        setBlinking(true);
-        window.setTimeout(() => {
-          setBlinking(false);
-          scheduleBlink();
-        }, 130);
+    function scheduleNext() {
+      const delay = baseDelay + Math.random() * baseDelay;
+      wanderRef.current = setTimeout(() => {
+        if (mode === "listening") {
+          setLook({ x: 0, y: 0.5 });
+        } else if (mode === "thinking") {
+          setLook({ x: (Math.random() - 0.5) * range, y: -1 - Math.random() * 1.5 });
+        } else {
+          setLook({
+            x: (Math.random() - 0.5) * 2 * range,
+            y: (Math.random() - 0.5) * range,
+          });
+        }
+        scheduleNext();
       }, delay);
     }
+    scheduleNext();
+    return () => clearTimeout(wanderRef.current);
+  }, [mode, range, baseDelay]);
+
+  useEffect(() => {
+    function scheduleBlink() {
+      blinkRef.current = setTimeout(() => {
+        setBlinking(true);
+        setTimeout(() => setBlinking(false), 130);
+        scheduleBlink();
+      }, 2800 + Math.random() * 2400);
+    }
     scheduleBlink();
-    return () => window.clearTimeout(timeoutId);
+    return () => clearTimeout(blinkRef.current);
   }, []);
 
-  return (
-    <div
-      ref={orbRef}
-      className={`flex h-36 w-36 items-center justify-center rounded-full bg-ink shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)] sm:h-44 sm:w-44 ${
-        mode === "searching" ? "animate-atlas-search-bounce" : "animate-atlas-breathe"
-      }`}
-    >
-      <div className="flex gap-5 sm:gap-6">
-        <Eye offset={eyeOffset} blinking={blinking} />
-        <Eye offset={eyeOffset} blinking={blinking} />
-      </div>
-    </div>
-  );
-}
+  const eyeOffsetX = 13;
+  const eyeCy = 36 + look.y;
+  const spring = { type: "spring" as const, stiffness: 220, damping: 20 };
 
-function Eye({
-  offset,
-  blinking,
-}: {
-  offset: { x: number; y: number };
-  blinking: boolean;
-}) {
   return (
-    <span
-      className="block h-4 w-4 rounded-full bg-white transition-transform duration-500 ease-[cubic-bezier(0.45,0,0.55,1)] sm:h-5 sm:w-5"
-      style={{
-        transform: `translate(${offset.x}px, ${offset.y}px) scaleY(${
-          blinking ? 0.12 : 1
-        })`,
-      }}
-    />
+    <svg width={size} height={size} viewBox="0 0 72 72" role="img" aria-label="Atlas">
+      <circle cx="36" cy="36" r="34" fill="#0B0B0C" />
+      {[-1, 1].map((side) => (
+        <motion.ellipse
+          key={side}
+          cx={36 + side * eyeOffsetX}
+          cy={36}
+          rx={6}
+          ry={7}
+          fill="#FFFFFF"
+          animate={{
+            cx: 36 + side * eyeOffsetX + look.x,
+            cy: eyeCy,
+            ry: blinking ? 0.6 : 7,
+          }}
+          transition={spring}
+        />
+      ))}
+    </svg>
   );
 }

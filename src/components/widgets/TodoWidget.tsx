@@ -2,16 +2,29 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSession } from "../../lib/useSession";
 import { WidgetCard } from "../WidgetCard";
+import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
 
-type Todo = { id: string; text: string; done: boolean };
+type Todo = { id: string; text: string; done: boolean; sent_to_classroom: boolean };
+type Course = { id: string; name: string };
 
-export function TodoWidget() {
+type Props = {
+  courses?: Course[];
+};
+
+const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
+
+export function TodoWidget({ courses = [] }: Props) {
   const { session } = useSession();
   const userId = session?.user?.id;
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const [sendingTodoId, setSendingTodoId] = useState<string | null>(null);
+  const [pendingCourseId, setPendingCourseId] = useState<string>(courses[0]?.id ?? "");
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -20,7 +33,7 @@ export function TodoWidget() {
     setLoading(true);
     supabase
       .from("todos")
-      .select("id, text, done")
+      .select("id, text, done, sent_to_classroom")
       .eq("user_id", userId)
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
@@ -34,6 +47,12 @@ export function TodoWidget() {
     };
   }, [userId]);
 
+  async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
   async function addTodo() {
     const text = draft.trim();
     if (!text || !userId) return;
@@ -42,7 +61,7 @@ export function TodoWidget() {
     const { data, error } = await supabase
       .from("todos")
       .insert({ user_id: userId, text, done: false })
-      .select("id, text, done")
+      .select("id, text, done, sent_to_classroom")
       .single();
 
     if (!error && data) setTodos((t) => [...t, data]);
@@ -56,7 +75,6 @@ export function TodoWidget() {
     setTodos((t) => t.map((item) => (item.id === id ? { ...item, done: nextDone } : item)));
     const { error } = await supabase.from("todos").update({ done: nextDone }).eq("id", id);
     if (error) {
-      // Revert on failure.
       setTodos((t) => t.map((item) => (item.id === id ? { ...item, done: current.done } : item)));
     }
   }
@@ -64,9 +82,52 @@ export function TodoWidget() {
   async function remove(id: string) {
     const prev = todos;
     setTodos((t) => t.filter((item) => item.id !== id));
+    if (sendingTodoId === id) setSendingTodoId(null);
     const { error } = await supabase.from("todos").delete().eq("id", id);
     if (error) setTodos(prev);
   }
+
+  function startSend(id: string) {
+    setError(null);
+    setPendingCourseId(courses[0]?.id ?? "");
+    setSendingTodoId(id);
+  }
+
+  async function confirmSend() {
+    const todo = todos.find((t) => t.id === sendingTodoId);
+    const course = courses.find((c) => c.id === pendingCourseId);
+    if (!todo || !course) return;
+
+    setPosting(true);
+    setError(null);
+
+    const task: PendingClassroomTask = {
+      courseId: course.id,
+      courseName: course.name,
+      title: todo.text,
+    };
+
+    try {
+      const res = await fetch(CLASSROOM_CREATE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify(task),
+      });
+      if (!res.ok) throw new Error(`Classroom endpoint returned ${res.status}`);
+
+      await supabase.from("todos").update({ sent_to_classroom: true }).eq("id", todo.id);
+      setTodos((t) =>
+        t.map((item) => (item.id === todo.id ? { ...item, sent_to_classroom: true } : item))
+      );
+      setSendingTodoId(null);
+    } catch {
+      setError("Couldn't post to Classroom — check /api/classroom/create-task.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  const sendingTodo = todos.find((t) => t.id === sendingTodoId);
 
   return (
     <WidgetCard title="To-do">
@@ -109,14 +170,31 @@ export function TodoWidget() {
                 }`}
               />
               <span
-                className={`flex-1 text-sm ${item.done ? "text-slate line-through" : "text-charcoal"}`}
+                className={`flex-1 truncate text-sm ${
+                  item.done ? "text-slate line-through" : "text-charcoal"
+                }`}
               >
                 {item.text}
               </span>
+
+              {item.sent_to_classroom ? (
+                <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate">
+                  Sent
+                </span>
+              ) : (
+                courses.length > 0 && (
+                  <button
+                    onClick={() => startSend(item.id)}
+                    className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate hover:text-charcoal"
+                  >
+                    → Classroom
+                  </button>
+                )
+              )}
               <button
                 onClick={() => remove(item.id)}
                 aria-label="Remove task"
-                className="text-xs text-slate hover:text-charcoal"
+                className="shrink-0 text-xs text-slate hover:text-charcoal"
               >
                 ✕
               </button>
@@ -124,6 +202,40 @@ export function TodoWidget() {
           ))}
         </ul>
       )}
+
+      {sendingTodo && (
+        <div className="mt-3 rounded-xl border border-mist bg-cloud p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate">
+            Send to which class?
+          </p>
+          <select
+            value={pendingCourseId}
+            onChange={(e) => setPendingCourseId(e.target.value)}
+            className="mt-2 w-full rounded-lg border border-mist bg-white px-2 py-1.5 text-sm text-ink"
+          >
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="mt-2 rounded-xl bg-ink p-1">
+            <PendingTaskCard
+              task={{
+                courseId: pendingCourseId,
+                courseName: courses.find((c) => c.id === pendingCourseId)?.name ?? "",
+                title: sendingTodo.text,
+              }}
+              sending={posting}
+              onApprove={confirmSend}
+              onCancel={() => setSendingTodoId(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-xs text-slate">{error}</p>}
     </WidgetCard>
   );
 }

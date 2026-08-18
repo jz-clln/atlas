@@ -5,6 +5,15 @@ import { useClassroomSync } from "../lib/useClassroomSync";
 import type { CourseworkItem } from "../lib/useClassroomSync";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { TaskDetailSheet } from "../components/TaskDetailSheet";
+import { AtlasWidget } from "../components/widgets/AtlasWidget";
+import { ClockWidget } from "../components/widgets/ClockWidget";
+import { CalendarWidget } from "../components/widgets/CalendarWidget";
+import { ProgressWidget } from "../components/widgets/ProgressWidget";
+import { TodoWidget } from "../components/widgets/TodoWidget";
+import { NotesWidget } from "../components/widgets/NotesWidget";
+import { GoalsWidget } from "../components/widgets/GoalsWidget";
+import { StudyPlannerWidget } from "../components/widgets/StudyPlannerWidget";
+import { SpotifyWidget } from "../components/widgets/SpotifyWidget";
 
 export function Dashboard() {
   const { session } = useSession();
@@ -35,6 +44,8 @@ export function Dashboard() {
     return due - Date.now() < 7 * 24 * 60 * 60 * 1000;
   });
 
+  const dueDates = upcoming.filter((c) => c.due_at).map((c) => new Date(c.due_at!));
+
   function courseName(courseId: string) {
     return courses.find((c) => c.id === courseId)?.name ?? "Unknown course";
   }
@@ -51,8 +62,16 @@ export function Dashboard() {
         </button>
       </header>
 
-      <main className="mx-auto max-w-2xl px-8 py-16">
-        <h2 className="text-3xl font-semibold leading-snug text-ink">
+      <main className="mx-auto max-w-6xl px-8 py-16">
+        <AtlasWidget
+          greeting={
+            dueThisWeek.length > 0
+              ? `${dueThisWeek.length} thing${dueThisWeek.length === 1 ? "" : "s"} due this week — want a rundown?`
+              : "You're all clear for now."
+          }
+        />
+
+        <h2 className="mt-10 text-3xl font-semibold leading-snug text-ink">
           Good {timeGreeting}, {firstName}.
           <br />
           <span className="text-charcoal">
@@ -78,31 +97,11 @@ export function Dashboard() {
           </p>
         )}
 
-        {upcoming.length > 0 && (
-          <ul className="mt-10 divide-y divide-mist border-y border-mist">
-            {upcoming.map((item) => (
-              <CourseworkRow
-                key={item.id}
-                item={item}
-                courseName={courseName(item.course_id)}
-                onSelect={() => setSelected(item)}
-              />
-            ))}
-          </ul>
-        )}
-
-        {done.length > 0 && (
-          <div className="mt-8">
-            <button
-              onClick={() => setShowDone((v) => !v)}
-              className="text-xs font-medium text-slate hover:text-charcoal"
-            >
-              {showDone ? "Hide" : "Show"} {done.length} finished
-            </button>
-
-            {showDone && (
-              <ul className="mt-4 divide-y divide-mist border-y border-mist opacity-60">
-                {done.map((item) => (
+        <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            {upcoming.length > 0 && (
+              <ul className="divide-y divide-mist border-y border-mist">
+                {upcoming.map((item) => (
                   <CourseworkRow
                     key={item.id}
                     item={item}
@@ -112,8 +111,43 @@ export function Dashboard() {
                 ))}
               </ul>
             )}
+
+            {done.length > 0 && (
+              <div className="mt-8">
+                <button
+                  onClick={() => setShowDone((v) => !v)}
+                  className="text-xs font-medium text-slate hover:text-charcoal"
+                >
+                  {showDone ? "Hide" : "Show"} {done.length} finished
+                </button>
+
+                {showDone && (
+                  <ul className="mt-4 divide-y divide-mist border-y border-mist opacity-60">
+                    {done.map((item) => (
+                      <CourseworkRow
+                        key={item.id}
+                        item={item}
+                        courseName={courseName(item.course_id)}
+                        onSelect={() => setSelected(item)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="space-y-4">
+            <ClockWidget />
+            <ProgressWidget completed={done.length} total={coursework.length} />
+            <CalendarWidget dueDates={dueDates} />
+            <TodoWidget />
+            <NotesWidget />
+            <GoalsWidget />
+            <StudyPlannerWidget />
+            <SpotifyWidget />
+          </div>
+        </div>
       </main>
 
       <TaskDetailSheet

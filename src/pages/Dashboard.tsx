@@ -15,7 +15,7 @@ import { NotificationsFeed } from "../components/widgets/NotificationsFeed";
 import { ScheduleWidget } from "../components/widgets/ScheduleWidget";
 import { GoalsWidget } from "../components/widgets/GoalsWidget";
 import { StudyPlannerWidget } from "../components/widgets/StudyPlannerWidget";
-import { SpotifyWidget } from "../components/widgets/SpotifyWidget";
+import { MusicWidget } from "../components/widgets/MusicWidget";
 
 export function Dashboard() {
   const { session } = useSession();
@@ -154,7 +154,7 @@ export function Dashboard() {
             <NotesWidget />
             <GoalsWidget />
             <StudyPlannerWidget />
-            <SpotifyWidget />
+            <MusicWidget />
           </div>
         </div>
       </main>

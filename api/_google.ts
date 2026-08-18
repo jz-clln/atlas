@@ -70,6 +70,52 @@ type GoogleCourse = {
   alternateLink?: string;
 };
 
+// --- Materials union type (Classroom API returns exactly one of these keys per item) ---
+
+type GoogleDriveFileMaterial = {
+  driveFile: {
+    driveFile: {
+      id: string;
+      title: string;
+      alternateLink: string;
+      thumbnailUrl?: string;
+    };
+    shareMode?: string;
+  };
+};
+
+type GoogleLinkMaterial = {
+  link: {
+    url: string;
+    title?: string;
+    thumbnailUrl?: string;
+  };
+};
+
+type GoogleYouTubeMaterial = {
+  youTubeVideo: {
+    id: string;
+    title: string;
+    alternateLink: string;
+    thumbnailUrl?: string;
+  };
+};
+
+type GoogleFormMaterial = {
+  form: {
+    formUrl: string;
+    responseUrl?: string;
+    title?: string;
+    thumbnailUrl?: string;
+  };
+};
+
+export type GoogleMaterial =
+  | GoogleDriveFileMaterial
+  | GoogleLinkMaterial
+  | GoogleYouTubeMaterial
+  | GoogleFormMaterial;
+
 type GoogleCourseWork = {
   id: string;
   title: string;
@@ -79,6 +125,10 @@ type GoogleCourseWork = {
   workType?: string;
   state?: string;
   alternateLink?: string;
+  materials?: GoogleMaterial[];
+  maxPoints?: number;
+  creationTime?: string;
+  updateTime?: string;
 };
 
 async function classroomFetch(path: string, accessToken: string) {
@@ -101,8 +151,21 @@ export async function fetchCourseWork(
   courseId: string,
   accessToken: string
 ): Promise<GoogleCourseWork[]> {
+  // No `fields=` filter is passed, so Classroom already returns the full
+  // resource — materials, maxPoints, creationTime, updateTime included.
   const data = await classroomFetch(`/courses/${courseId}/courseWork`, accessToken);
   return data.courseWork ?? [];
+}
+
+// Fetches full detail for a single task — used for on-demand "explain this
+// assignment" lookups from the assistant chat (Phase 3), so we don't have to
+// wait for a full sync to get the latest description/materials for one item.
+export async function fetchCourseWorkDetail(
+  courseId: string,
+  courseWorkId: string,
+  accessToken: string
+): Promise<GoogleCourseWork> {
+  return classroomFetch(`/courses/${courseId}/courseWork/${courseWorkId}`, accessToken);
 }
 
 export async function fetchSubmissionState(

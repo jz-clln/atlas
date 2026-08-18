@@ -4,17 +4,19 @@ import { useSession } from "../lib/useSession";
 import { useClassroomSync } from "../lib/useClassroomSync";
 import type { CourseworkItem } from "../lib/useClassroomSync";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { TaskDetailSheet } from "../components/TaskDetailSheet";
 
 export function Dashboard() {
   const { session } = useSession();
   const { courses, coursework, loading, error, refetch } = useClassroomSync();
   const [showDone, setShowDone] = useState(false);
+  const [selected, setSelected] = useState<CourseworkItem | null>(null);
 
   const user = session?.user;
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
 
   if (loading) {
-    return <LoadingScreen label={`Looking for your assignments, ${firstName}`} />;
+    return <LoadingScreen label={`Hey ${firstName}, I'm looking for your assignments`} />;
   }
 
   const hour = new Date().getHours();
@@ -51,12 +53,12 @@ export function Dashboard() {
 
       <main className="mx-auto max-w-2xl px-8 py-16">
         <h2 className="text-3xl font-semibold leading-snug text-ink">
-          {timeGreeting}, {firstName}.
+          Good {timeGreeting}, {firstName}.
           <br />
           <span className="text-charcoal">
             {dueThisWeek.length > 0
               ? `${dueThisWeek.length} thing${dueThisWeek.length === 1 ? "" : "s"} due this week.`
-              : "Nothing due this week — you're clear."}
+              : "All clear for now."}
           </span>
         </h2>
 
@@ -79,7 +81,12 @@ export function Dashboard() {
         {upcoming.length > 0 && (
           <ul className="mt-10 divide-y divide-mist border-y border-mist">
             {upcoming.map((item) => (
-              <CourseworkRow key={item.id} item={item} courseName={courseName(item.course_id)} />
+              <CourseworkRow
+                key={item.id}
+                item={item}
+                courseName={courseName(item.course_id)}
+                onSelect={() => setSelected(item)}
+              />
             ))}
           </ul>
         )}
@@ -96,13 +103,24 @@ export function Dashboard() {
             {showDone && (
               <ul className="mt-4 divide-y divide-mist border-y border-mist opacity-60">
                 {done.map((item) => (
-                  <CourseworkRow key={item.id} item={item} courseName={courseName(item.course_id)} />
+                  <CourseworkRow
+                    key={item.id}
+                    item={item}
+                    courseName={courseName(item.course_id)}
+                    onSelect={() => setSelected(item)}
+                  />
                 ))}
               </ul>
             )}
           </div>
         )}
       </main>
+
+      <TaskDetailSheet
+        item={selected}
+        courseName={selected ? courseName(selected.course_id) : ""}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
@@ -110,9 +128,11 @@ export function Dashboard() {
 function CourseworkRow({
   item,
   courseName,
+  onSelect,
 }: {
   item: CourseworkItem;
   courseName: string;
+  onSelect: () => void;
 }) {
   const due = item.due_at ? new Date(item.due_at) : null;
   const dueLabel = due
@@ -120,16 +140,21 @@ function CourseworkRow({
     : null;
 
   return (
-    <li className="flex items-center justify-between gap-4 py-4">
-      <div>
-        <p className="text-sm font-medium text-ink">{item.title}</p>
-        <p className="mt-0.5 text-xs text-slate">{courseName}</p>
-      </div>
-      {dueLabel && (
-        <span className="whitespace-nowrap text-xs font-medium text-charcoal">
-          {dueLabel}
-        </span>
-      )}
+    <li>
+      <button
+        onClick={onSelect}
+        className="flex w-full items-center justify-between gap-4 py-4 text-left transition-opacity active:opacity-60"
+      >
+        <div>
+          <p className="text-sm font-medium text-ink">{item.title}</p>
+          <p className="mt-0.5 text-xs text-slate">{courseName}</p>
+        </div>
+        {dueLabel && (
+          <span className="whitespace-nowrap text-xs font-medium text-charcoal">
+            {dueLabel}
+          </span>
+        )}
+      </button>
     </li>
   );
 }

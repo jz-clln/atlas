@@ -66,6 +66,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           submission_state: submissionState,
           is_done: submissionState ? DONE_STATES.has(submissionState) : false,
           alternate_link: item.alternateLink ?? null,
+          materials: item.materials ?? null,
+          max_points: item.maxPoints ?? null,
+          creation_time: item.creationTime ?? null,
+          update_time: item.updateTime ?? null,
           last_synced_at: new Date().toISOString(),
         });
       }

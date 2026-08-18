@@ -7,15 +7,58 @@ export type Course = {
   section: string | null;
 };
 
+// --- Materials union type (mirrors api/_google.ts — exactly one key set per item) ---
+
+export type CourseworkMaterial =
+  | {
+      driveFile: {
+        driveFile: {
+          id: string;
+          title: string;
+          alternateLink: string;
+          thumbnailUrl?: string;
+        };
+        shareMode?: string;
+      };
+    }
+  | {
+      link: {
+        url: string;
+        title?: string;
+        thumbnailUrl?: string;
+      };
+    }
+  | {
+      youTubeVideo: {
+        id: string;
+        title: string;
+        alternateLink: string;
+        thumbnailUrl?: string;
+      };
+    }
+  | {
+      form: {
+        formUrl: string;
+        responseUrl?: string;
+        title?: string;
+        thumbnailUrl?: string;
+      };
+    };
+
 export type CourseworkItem = {
   id: string;
   course_id: string;
   title: string;
+  description: string | null;
   due_at: string | null;
   work_type: string | null;
   alternate_link: string | null;
   submission_state: string | null;
   is_done: boolean;
+  materials: CourseworkMaterial[] | null;
+  max_points: number | null;
+  creation_time: string | null;
+  update_time: string | null;
 };
 
 export function useClassroomSync() {
@@ -56,4 +99,26 @@ export function useClassroomSync() {
   }, [sync]);
 
   return { courses, coursework, loading, error, refetch: sync };
+}
+
+// On-demand live lookup for a single task — hits /api/classroom/task instead
+// of relying on the last full sync. Use this from the assistant chat when the
+// user asks about one specific assignment.
+export async function getTaskDetail(courseId: string, courseWorkId: string) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Not signed in.");
+
+  const params = new URLSearchParams({ courseId, courseWorkId });
+  const res = await fetch(`/api/classroom/task?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `Task lookup failed (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.task;
 }

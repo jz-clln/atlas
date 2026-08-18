@@ -9,13 +9,9 @@ import { AtlasWidget } from "../components/widgets/AtlasWidget";
 import { ClockWidget } from "../components/widgets/ClockWidget";
 import { CalendarWidget } from "../components/widgets/CalendarWidget";
 import { ProgressWidget } from "../components/widgets/ProgressWidget";
-import { TodoWidget } from "../components/widgets/TodoWidget";
-import { NotesWidget } from "../components/widgets/NotesWidget";
 import { NotificationsFeed } from "../components/widgets/NotificationsFeed";
-import { ScheduleWidget } from "../components/widgets/ScheduleWidget";
-import { GoalsWidget } from "../components/widgets/GoalsWidget";
-import { StudyPlannerWidget } from "../components/widgets/StudyPlannerWidget";
 import { MusicWidget } from "../components/widgets/MusicWidget";
+import { WidgetDock } from "../components/WidgetDock";
 
 export function Dashboard() {
   const { session } = useSession();
@@ -149,15 +145,12 @@ export function Dashboard() {
             <ClockWidget />
             <ProgressWidget completed={done.length} total={coursework.length} />
             <CalendarWidget dueDates={dueDates} />
-            <ScheduleWidget courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
-            <TodoWidget courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
-            <NotesWidget />
-            <GoalsWidget />
-            <StudyPlannerWidget />
-            <MusicWidget />
           </div>
         </div>
       </main>
+
+      <WidgetDock courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
+      <MusicWidget />
 
       <TaskDetailSheet
         item={selected}

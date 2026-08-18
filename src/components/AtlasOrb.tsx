@@ -9,11 +9,11 @@ type Props = {
 };
 
 // Atlas's face. A black circle with two white eyes that drift and blink on
-// their own — no input needed. `mode` changes the eyes' personality:
-// - idle: slow, occasional glances (default resting state)
-// - searching: quicker, wider scanning (e.g. while syncing Classroom)
-// - listening: eyes settle toward center (reserved for future voice input)
-// - thinking: slower drift, mostly upward (while waiting on a reply)
+// their own. The eyes themselves are static <ellipse>s at a fixed cx/cy —
+// movement and blinking are done entirely via CSS transform (translate +
+// scaleY), never by animating cx/cy/ry directly. Animating raw SVG geometry
+// attributes through Framer Motion is fragile (undefined-during-transition
+// errors); transforms are the reliable path for any element type.
 export function AtlasOrb({ mode = "idle", size = 72 }: Props) {
   const [look, setLook] = useState({ x: 0, y: 0 });
   const [blinking, setBlinking] = useState(false);
@@ -57,7 +57,7 @@ export function AtlasOrb({ mode = "idle", size = 72 }: Props) {
   }, []);
 
   const eyeOffsetX = 13;
-  const eyeCy = 36 + look.y;
+  const eyeCy = 36;
   const spring = { type: "spring" as const, stiffness: 220, damping: 20 };
 
   return (
@@ -67,14 +67,15 @@ export function AtlasOrb({ mode = "idle", size = 72 }: Props) {
         <motion.ellipse
           key={side}
           cx={36 + side * eyeOffsetX}
-          cy={36}
+          cy={eyeCy}
           rx={6}
           ry={7}
           fill="#FFFFFF"
+          style={{ transformOrigin: `${36 + side * eyeOffsetX}px ${eyeCy}px` }}
           animate={{
-            cx: 36 + side * eyeOffsetX + look.x,
-            cy: eyeCy,
-            ry: blinking ? 0.6 : 7,
+            x: look.x,
+            y: look.y,
+            scaleY: blinking ? 0.08 : 1,
           }}
           transition={spring}
         />

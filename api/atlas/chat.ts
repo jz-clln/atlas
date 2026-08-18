@@ -4,11 +4,7 @@ import { getValidAccessToken, fetchCourses, fetchCourseWork, combineDueDateTime 
 
 type ChatMessage = { role: "user" | "atlas"; text: string };
 
-// Haiku instead of Sonnet — this is a personal assistant doing structured
-// JSON replies, not deep reasoning, so the cheaper model is plenty. Bump
-// back to "claude-sonnet-5" if replies feel too shallow.
-const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
-const OPENAI_FALLBACK_MODEL = "gpt-4o-mini";
+const OPENAI_MODEL = "gpt-4o-mini";
 
 // Keep token spend predictable regardless of how big todos/notes/history get.
 const MAX_HISTORY_MESSAGES = 10;
@@ -18,6 +14,9 @@ const MAX_ANNOUNCEMENTS = 8;
 const MAX_TOKENS = 400;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // TEMP DEBUG — remove once the env var issue is confirmed fixed.
+  console.log("ENV CHECK — OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -127,106 +126,44 @@ Rules:
   // biggest token cost if it's left unbounded.
   const trimmedHistory = (history ?? []).slice(-MAX_HISTORY_MESSAGES);
 
-  let text: string | null = null;
-  let providerUsed: "claude" | "openai" | null = null;
-
-  const claudeResult = await callClaude(systemPrompt, trimmedHistory, message);
-  if (claudeResult.ok) {
-    text = claudeResult.text;
-    providerUsed = "claude";
-  } else if (claudeResult.creditExhausted && process.env.OPENAI_API_KEY) {
-    // Claude's out of credit — fall back to OpenAI rather than failing the
-    // request outright.
-    const openaiResult = await callOpenAI(systemPrompt, trimmedHistory, message);
-    if (openaiResult.ok) {
-      text = openaiResult.text;
-      providerUsed = "openai";
-    }
-  }
-
-  if (text === null) {
-    res.status(502).json({ error: "Atlas model request failed on both providers" });
-    return;
-  }
-
-  try {
-    const clean = text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    res.status(200).json({ ...parsed, _provider: providerUsed });
-  } catch {
-    res.status(200).json({ reply: text, action: null, _provider: providerUsed });
-  }
-}
-
-async function callClaude(systemPrompt: string, history: ChatMessage[], message: string) {
-  const anthropicMessages = [
-    ...history.map((m) => ({
-      role: m.role === "user" ? "user" : "assistant",
-      content: m.text,
-    })),
-    { role: "user", content: message },
-  ];
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY as string,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: anthropicMessages,
-    }),
-  });
-
-  if (res.ok) {
-    const data = await res.json();
-    const text = (data.content ?? []).map((b: any) => b.text ?? "").join("");
-    return { ok: true as const, text, creditExhausted: false };
-  }
-
-  // Anthropic returns 400 invalid_request_error with a message about
-  // credit balance when you're out of credits, and 429 for rate/quota
-  // limits — treat both as "time to fall back to OpenAI."
-  const bodyText = await res.text().catch(() => "");
-  const creditExhausted =
-    res.status === 429 || (res.status === 400 && /credit|balance|quota/i.test(bodyText));
-
-  return { ok: false as const, text: null, creditExhausted };
-}
-
-async function callOpenAI(systemPrompt: string, history: ChatMessage[], message: string) {
   const openaiMessages = [
     { role: "system", content: systemPrompt },
-    ...history.map((m) => ({
+    ...trimmedHistory.map((m) => ({
       role: m.role === "user" ? "user" : "assistant",
       content: m.text,
     })),
     { role: "user", content: message },
   ];
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: OPENAI_FALLBACK_MODEL,
+      model: OPENAI_MODEL,
       max_tokens: MAX_TOKENS,
       messages: openaiMessages,
       response_format: { type: "json_object" },
     }),
   });
 
-  if (!res.ok) {
-    return { ok: false as const, text: null };
+  if (!aiRes.ok) {
+    const bodyText = await aiRes.text().catch(() => "");
+    console.error(`OpenAI request failed (${aiRes.status}): ${bodyText}`);
+    res.status(502).json({ error: "Atlas model request failed" });
+    return;
   }
 
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content ?? "";
-  return { ok: true as const, text };
+  const aiData = await aiRes.json();
+  const text = aiData.choices?.[0]?.message?.content ?? "";
+
+  try {
+    const clean = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    res.status(200).json(parsed);
+  } catch {
+    res.status(200).json({ reply: text, action: null });
+  }
 }

@@ -158,6 +158,43 @@ export function AtlasWidget({ greeting }: Props) {
 
   return (
     <div className="w-full rounded-3xl border border-mist bg-ink p-6 text-white">
+      {/* Scoped styles for the thin scrollbar and the thinking-dots animation.
+          Kept local to this component so no global CSS or new dependency
+          (e.g. framer-motion) is required. */}
+      <style>{`
+        .atlas-thin-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        }
+        .atlas-thin-scroll::-webkit-scrollbar {
+          width: 3px;
+        }
+        .atlas-thin-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .atlas-thin-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(255, 255, 255, 0.18);
+          border-radius: 9999px;
+        }
+        .atlas-thin-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes atlas-typing-bounce {
+          0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: 0.4;
+          }
+          30% {
+            transform: translateY(-3px);
+            opacity: 1;
+          }
+        }
+        .atlas-typing-dot {
+          animation: atlas-typing-bounce 1.1s ease-in-out infinite;
+        }
+      `}</style>
+
       <div className="flex items-center gap-3">
         <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
         <div>
@@ -166,8 +203,10 @@ export function AtlasWidget({ greeting }: Props) {
         </div>
       </div>
 
-      {history.length > 0 && (
-        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto">
+      <div className="mt-4 h-px w-full bg-white/10" />
+
+      {(history.length > 0 || sending) && (
+        <ul className="atlas-thin-scroll mt-4 max-h-40 space-y-2 overflow-y-auto pr-1">
           {history.map((msg, i) => (
             <li
               key={i}
@@ -177,6 +216,26 @@ export function AtlasWidget({ greeting }: Props) {
               {msg.text}
             </li>
           ))}
+
+          {sending && (
+            <li className="flex items-center gap-1.5 text-sm text-white">
+              <span className="text-white/40">Atlas: </span>
+              <span className="flex items-center gap-1">
+                <span
+                  className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
+                  style={{ animationDelay: "300ms" }}
+                />
+              </span>
+            </li>
+          )}
         </ul>
       )}
 

@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import { useSession } from "../../lib/useSession";
 import { AtlasOrb } from "../AtlasOrb";
 import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
+import { VoiceModeOverlay } from "../VoiceModeOverlay";
 
 type Props = {
   greeting: string;
@@ -50,6 +51,7 @@ export function AtlasWidget({ greeting }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pendingTask, setPendingTask] = useState<PendingClassroomTask | null>(null);
   const [mode, setMode] = useState<"idle" | "notified">("idle");
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Atlas speaks up on its own the moment the cron job finds a new
   // Classroom announcement — no chat message from the user required.
@@ -203,9 +205,9 @@ export function AtlasWidget({ greeting }: Props) {
         />
         <button
           type="button"
-          disabled
-          aria-label="Voice command — coming soon"
-          className="shrink-0 cursor-not-allowed rounded-full border border-white/15 p-2 text-white/50"
+          onClick={() => setVoiceOpen(true)}
+          aria-label="Start voice mode"
+          className="shrink-0 rounded-full border border-white/15 p-2 text-white/70 transition-colors hover:border-white/30 hover:text-white"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
             <rect x="9" y="3" width="6" height="11" rx="3" />
@@ -215,8 +217,17 @@ export function AtlasWidget({ greeting }: Props) {
         </button>
       </form>
       <p className="mt-2 text-[11px] text-white/40">
-        {error ?? "Voice commands are coming soon. Atlas always asks before posting anything to Classroom."}
+        {error ?? "Atlas always asks before posting anything to Classroom."}
       </p>
+
+      {voiceOpen && (
+        <VoiceModeOverlay
+          history={history}
+          sending={sending}
+          sendMessage={sendMessage}
+          onClose={() => setVoiceOpen(false)}
+        />
+      )}
     </div>
   );
 }

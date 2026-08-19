@@ -96,7 +96,7 @@ export function ScheduleWidget({ courses = [] }: Props) {
         <>
           {schedules.length === 0 ? (
             <p className="text-sm text-slate">
-              No subjects scheduled yet — set one below, or just tell Atlas.
+              No subjects scheduled yet. Set one below, or just tell Atlas.
             </p>
           ) : (
             <ul className="space-y-2">

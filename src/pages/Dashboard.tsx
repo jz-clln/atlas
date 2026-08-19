@@ -23,7 +23,7 @@ export function Dashboard() {
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
 
   if (loading) {
-    return <LoadingScreen label={`Hey ${firstName}, I'm looking for your assignments`} />;
+    return <LoadingScreen label={`Hey ${firstName}! Looking for your assignments.`} />;
   }
 
   const hour = new Date().getHours();
@@ -52,12 +52,12 @@ export function Dashboard() {
   // nothing due, or a pointer to the most urgent thing coming up.
   const atlasBrief =
     coursework.length === 0
-      ? "Nothing's come through from Classroom yet — no courses or coursework synced."
+      ? "Nothing's come through from Classroom yet. Check back in a few minutes."
       : active.length === 0
         ? "Everything's turned in. Nothing pending across any of your classes."
         : dueThisWeek.length === 0
           ? `${active.length} open item${active.length === 1 ? "" : "s"}, but nothing due in the next 7 days.`
-          : `${dueThisWeek.length} due this week — next up is "${upcoming[0].title}" in ${courseName(upcoming[0].course_id)}.`;
+          : `${dueThisWeek.length} due this week. Next up is "${upcoming[0].title}" in ${courseName(upcoming[0].course_id)}.`;
 
   return (
     <div className="min-h-screen bg-cloud">

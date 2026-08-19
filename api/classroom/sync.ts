@@ -85,6 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       coursework: courseworkRows,
     });
   } catch (err) {
+    // TEMP DEBUG — shows the real error in the terminal instead of only
+    // the Network tab response body. Remove once diagnosed.
+    console.error("api/classroom/sync failed:", err);
+
     const message = err instanceof Error ? err.message : "Unknown error";
     return res.status(500).json({ error: message });
   }

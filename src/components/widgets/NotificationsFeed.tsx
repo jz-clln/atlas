@@ -77,7 +77,7 @@ export function NotificationsFeed() {
       {loading ? (
         <p className="text-sm text-slate">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-slate">Nothing new — Atlas checks Classroom every 15 minutes.</p>
+        <p className="text-sm text-slate">Atlas checks Classroom every 15 minutes.</p>
       ) : (
         <ul className="max-h-64 space-y-2 overflow-y-auto">
           {items.map((n) => (

@@ -121,7 +121,7 @@ export function TodoWidget({ courses = [] }: Props) {
       );
       setSendingTodoId(null);
     } catch {
-      setError("Couldn't post to Classroom — check /api/classroom/create-task.");
+      setError("Couldn't post to Classroom, Please check /api/classroom/create-task.");
     } finally {
       setPosting(false);
     }

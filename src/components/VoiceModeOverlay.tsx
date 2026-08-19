@@ -85,7 +85,7 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.start = () => {
+    recognition.onstart = () => {
       setListening(true);
     };
 
@@ -119,7 +119,6 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     };
 
     recognitionRef.current = recognition;
-    startListening();
 
     return () => {
       closedRef.current = true;

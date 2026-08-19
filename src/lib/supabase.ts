@@ -38,7 +38,7 @@ export async function signInWithGoogleClassroom() {
         access_type: "offline",
         prompt: "consent",
       },
-      redirectTo: `${window.location.origin}/dashboard`,
+      redirectTo: window.location.origin,
     },
   });
 

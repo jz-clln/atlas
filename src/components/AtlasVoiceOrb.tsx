@@ -11,16 +11,14 @@ type Props = {
   micRef?: React.MutableRefObject<{ analyser: AnalyserNode; dataArray: Uint8Array<ArrayBuffer> } | null>;
 };
 
-// Recolored palette (was purple/blue/purple/pink per state in the original
-// demo). Chromatic-aberration / holographic-rainbow strength was also
-// turned down from the original — at full strength that effect washes out
-// any base color with rainbow hues, which fights a deliberately neutral
-// palette like this one.
+// Distinct per-state hues (inactive/listening/thinking/talking), closer to
+// Apple/Alexa-style assistant conventions — inactive stays neutral, the
+// other three each get their own color so the state is readable at a glance.
 const COLORS = {
-  idle: 0x353535,
-  listening: 0xbeb7a4,
-  thinking: 0x292f36,
-  speaking: 0xbeb7a4,
+  idle: 0x48484c,
+  listening: 0x4da3ff,
+  thinking: 0xe8a33d,
+  speaking: 0x34c979,
 };
 
 const STATE_CONFIG: Record<

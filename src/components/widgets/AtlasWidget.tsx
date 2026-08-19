@@ -24,19 +24,6 @@ type ChatAction =
       };
     };
 
-// Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
-// System).
-//
-// Contract with the backend (see api/atlas/chat.ts):
-// - POST /api/atlas/chat, body: { message: string, history: AtlasMessage[] }
-// - Auth: Supabase access token in the Authorization header
-// - Response: { reply: string, action: null | ChatAction }
-// - The server is expected to load the user's todos, notes, courses, and
-//   coursework and give Atlas all of it as context — Atlas should never
-//   have to be told what's on the dashboard, it should already know.
-// - If action.type is "create_classroom_task", Atlas is PROPOSING a task —
-//   it must never be posted without the user clicking "Post to Classroom"
-//   on the confirmation card below.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 
@@ -53,8 +40,6 @@ export function AtlasWidget({ greeting }: Props) {
   const [mode, setMode] = useState<"idle" | "notified">("idle");
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Atlas speaks up on its own the moment the cron job finds a new
-  // Classroom announcement — no chat message from the user required.
   useEffect(() => {
     if (!userId) return;
 
@@ -108,8 +93,6 @@ export function AtlasWidget({ greeting }: Props) {
       if (data.action?.type === "create_classroom_task") {
         setPendingTask(data.action.task);
       } else if (data.action?.type === "set_class_schedule" && userId) {
-        // No Classroom posting involved, so this saves right away rather
-        // than needing an approve/cancel card.
         const s = data.action.schedule;
         await supabase.from("class_schedules").upsert(
           {
@@ -158,7 +141,7 @@ export function AtlasWidget({ greeting }: Props) {
 
   return (
     <div className="w-full rounded-3xl border border-mist bg-ink p-6 text-white">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 border-b border-white/10 pb-4">
         <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-white/60">Atlas</p>
@@ -166,18 +149,60 @@ export function AtlasWidget({ greeting }: Props) {
         </div>
       </div>
 
-      {history.length > 0 && (
-        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto">
+      {(history.length > 0 || sending) && (
+        <div
+          className="mt-4 max-h-40 space-y-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb:hover]:bg-white/25"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent" }}
+        >
+          <style>{`
+            @keyframes atlas-typing-dot {
+              0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+              30% { transform: translateY(-3px); opacity: 1; }
+            }
+          `}</style>
+
           {history.map((msg, i) => (
-            <li
-              key={i}
-              className={`text-sm ${msg.role === "user" ? "text-white/70" : "text-white"}`}
-            >
-              <span className="text-white/40">{msg.role === "user" ? "You: " : "Atlas: "}</span>
-              {msg.text}
-            </li>
+            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                  msg.role === "user"
+                    ? "rounded-br-sm bg-white text-ink"
+                    : "rounded-bl-sm bg-white/10 text-white"
+                }`}
+              >
+                {msg.text}
+              </div>
+            </div>
           ))}
-        </ul>
+
+          {sending && (
+            <div className="flex justify-start">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm bg-white/10 px-3.5 py-2.5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-white/70"
+                  style={{
+                    animation: "atlas-typing-dot 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite",
+                    animationDelay: "0ms",
+                  }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-white/70"
+                  style={{
+                    animation: "atlas-typing-dot 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite",
+                    animationDelay: "160ms",
+                  }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-white/70"
+                  style={{
+                    animation: "atlas-typing-dot 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite",
+                    animationDelay: "320ms",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {pendingTask && (

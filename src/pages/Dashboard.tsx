@@ -38,8 +38,11 @@ export function Dashboard() {
     .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
 
   const dueThisWeek = upcoming.filter((c) => {
-    const due = new Date(c.due_at!).getTime();
-    return due - Date.now() < 7 * 24 * 60 * 60 * 1000;
+    const msUntilDue = new Date(c.due_at!).getTime() - Date.now();
+    // Was previously just "< 7 days", which is also true for any negative
+    // number — meaning overdue items were silently counted as "due this
+    // week" instead of being excluded. Needs a floor at 0 too.
+    return msUntilDue >= 0 && msUntilDue < 7 * 24 * 60 * 60 * 1000;
   });
 
   const dueDates = upcoming.filter((c) => c.due_at).map((c) => new Date(c.due_at!));

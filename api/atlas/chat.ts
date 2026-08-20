@@ -11,6 +11,35 @@ const MAX_NOTES_CHARS = 1500;
 const MAX_TODOS = 30;
 const MAX_ANNOUNCEMENTS = 8;
 const MAX_TOKENS = 400;
+const MAX_DESCRIPTION_CHARS = 800;
+
+// Same materials union Classroom returns everywhere else in this app —
+// flattened here to {title, url} pairs so Atlas gets something useful
+// without the raw nested JSON eating into the token budget.
+type CourseworkMaterial =
+  | { driveFile: { driveFile: { title: string; alternateLink: string } } }
+  | { link: { url: string; title?: string } }
+  | { youTubeVideo: { title: string; alternateLink: string } }
+  | { form: { formUrl: string; title?: string } };
+
+function summarizeMaterial(m: CourseworkMaterial): { title: string; url: string; kind: string } | null {
+  if ("driveFile" in m) {
+    return { title: m.driveFile.driveFile.title, url: m.driveFile.driveFile.alternateLink, kind: "file" };
+  }
+  if ("link" in m) {
+    return { title: m.link.title ?? m.link.url, url: m.link.url, kind: "link" };
+  }
+  if ("youTubeVideo" in m) {
+    return { title: m.youTubeVideo.title, url: m.youTubeVideo.alternateLink, kind: "video" };
+  }
+  if ("form" in m) {
+    // Atlas cannot read what's inside a Google Form — no Forms API
+    // integration exists. Flagging the kind explicitly so the prompt can
+    // tell Atlas to be honest about that instead of guessing at content.
+    return { title: m.form.title ?? "Google Form", url: m.form.formUrl, kind: "google_form" };
+  }
+  return null;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // TEMP DEBUG — remove once the env var issue is confirmed fixed.
@@ -63,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     admin.from("courses").select("id, name").eq("user_id", user.id),
     admin
       .from("coursework")
-      .select("id, course_id, title, due_at, work_type, is_done")
+      .select("id, course_id, title, due_at, work_type, is_done, description, materials")
       .eq("user_id", user.id),
   ]);
 
@@ -93,6 +122,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // from raw timestamps — cheaper, and removes an entire class of "Atlas
     // got the date math wrong" mistakes.
     isOverdue: !cw.is_done && !!cw.due_at && new Date(cw.due_at) < nowDate,
+    description: cw.description ? cw.description.slice(0, MAX_DESCRIPTION_CHARS) : null,
+    materials: ((cw.materials ?? []) as CourseworkMaterial[])
+      .map(summarizeMaterial)
+      .filter((m): m is NonNullable<typeof m> => m !== null),
   }));
 
   const context = {
@@ -121,6 +154,13 @@ Rules:
 - Never use em dashes (—) in replies. Write in plain, natural spoken language, like a normal AI assistant talking to someone, not like a written essay.
 - Each coursework item includes "isOverdue", already computed relative to the current date/time above —
   trust that flag rather than recalculating overdue status yourself from "dueAt".
+- Each coursework item may include "description" (the actual assignment instructions/question text, when
+  Classroom provided one) and "materials" (attached files, links, videos, or Google Forms). Use these to
+  actually help with content — explaining a question, drafting an answer — instead of only ever referring
+  to the title. If a material has kind "google_form", you cannot see what's inside it (no Forms API
+  integration exists) — say so plainly and ask the user to paste or photograph the question instead of
+  guessing or pretending you can see it. Same if description is null/empty and there's no useful material:
+  tell them you don't have the content and ask them to share it.
 - If the user is busy or asks you to create/post a task, propose exactly ONE Classroom task via the
   "create_classroom_task" action. You must NEVER post it yourself — the user always confirms before
   anything reaches Classroom.

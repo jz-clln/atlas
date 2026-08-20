@@ -32,7 +32,7 @@ type ChatAction =
     }
   | { type: "submit_classroom_work"; submission: PendingSubmission }
   | { type: "add_todo"; todo: { text: string } }
-  | { type: "update_notes"; notes: { mode: "append" | "replace"; content: string } }
+  | { type: "add_note"; note: { content: string } }
   | { type: "set_goal"; goal: { label: string; period: "week" | "month" } }
   | { type: "generate_pdf"; pdf: { title: string; content: string } };
 
@@ -53,9 +53,11 @@ type ChatAction =
 // - If action.type is "submit_classroom_work", Atlas is PROPOSING a
 //   submission (text answer or file) for an existing assignment — same
 //   never-without-confirmation rule, handled by PendingSubmissionCard.
-// - "add_todo", "update_notes", and "set_goal" are private (never touch
+// - "add_todo", "add_note", and "set_goal" are private (never touch
 //   Classroom), so they save immediately, same as set_class_schedule —
-//   no approve/cancel card needed for any of them.
+//   no approve/cancel card needed for any of them. Notes are discrete
+//   entries now (a real table), not one editable blob — add_note always
+//   creates a new row, never edits an existing one.
 // - "generate_pdf" fetches a rendered PDF from /api/atlas/generate-pdf and
 //   attaches it to the reply message as a downloadable link.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
@@ -211,26 +213,16 @@ export function AtlasWidget({ greeting }: Props) {
               : `Added to your list: "${t.text}".`,
           },
         ]);
-      } else if (data.action?.type === "update_notes" && userId) {
-        const n = data.action.notes;
-        const { data: existing } = await supabase
-          .from("notes")
-          .select("content")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        const nextContent =
-          n.mode === "append" && existing?.content ? `${existing.content}\n${n.content}` : n.content;
-
-        const { error: notesError } = await supabase
-          .from("notes")
-          .upsert({ user_id: userId, content: nextContent, updated_at: new Date().toISOString() });
-
+      } else if (data.action?.type === "add_note" && userId) {
+        const n = data.action.note;
+        const { error: noteError } = await supabase
+          .from("notes_entries")
+          .insert({ user_id: userId, content: n.content });
         setHistory((h) => [
           ...h,
           {
             role: "atlas",
-            text: notesError ? "Couldn't update your notes, Sir. Try again?" : "Updated your notes.",
+            text: noteError ? "Couldn't save that note, Sir. Try again?" : "Saved a new note.",
           },
         ]);
       } else if (data.action?.type === "set_goal" && userId) {

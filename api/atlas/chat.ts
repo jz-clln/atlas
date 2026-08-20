@@ -7,10 +7,11 @@ const OPENAI_MODEL = "gpt-5.4-mini";
 
 // Keep token spend predictable regardless of how big todos/notes/history get.
 const MAX_HISTORY_MESSAGES = 10;
-const MAX_NOTES_CHARS = 1500;
 const MAX_TODOS = 30;
 const MAX_ANNOUNCEMENTS = 8;
 const MAX_GOALS = 10;
+const MAX_NOTES = 20;
+const MAX_NOTE_CHARS = 500;
 const MAX_TOKENS = 400;
 const MAX_DESCRIPTION_CHARS = 800;
 
@@ -67,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const [
     { data: todos },
-    { data: notesRow },
+    { data: noteRows },
     { data: schedules },
     { data: recentNotifications },
     { data: courseRows },
@@ -75,7 +76,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { data: goalRows },
   ] = await Promise.all([
     admin.from("todos").select("text, done").eq("user_id", user.id).limit(MAX_TODOS),
-    admin.from("notes").select("content").eq("user_id", user.id).maybeSingle(),
+    admin
+      .from("notes_entries")
+      .select("content, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(MAX_NOTES),
     admin
       .from("class_schedules")
       .select("course_id, course_name, days_of_week, start_time, end_time")
@@ -141,11 +147,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     pct: g.pct,
     periodStart: g.period_start,
   }));
+  const notes = (noteRows ?? []).map((n) => ({
+    content: n.content.slice(0, MAX_NOTE_CHARS),
+    createdAt: n.created_at,
+  }));
 
   const context = {
     currentDateTime: { iso: nowISO, human: nowHuman },
     todos: todos ?? [],
-    notes: (notesRow?.content ?? "").slice(0, MAX_NOTES_CHARS),
+    notes,
     courses,
     coursework,
     schedules: schedules ?? [],
@@ -195,9 +205,11 @@ Rules:
 - If the user asks you to add, remember, or remind them of something as a task (e.g. "add buy pens to my
   list", "remind me to email my professor"), propose an "add_todo" action. This is private and saves
   immediately, same as set_class_schedule — no confirmation card needed.
-- If the user asks you to write down, note, or save something as a note (e.g. "note that the deadline
-  moved to Friday"), propose an "update_notes" action. Default "mode" to "append" so existing notes are
-  preserved — only use "replace" if the user explicitly asks to clear or rewrite their notes entirely.
+- If the user asks you to write down, note, or save something (e.g. "note that the deadline moved to
+  Friday", "write down that my professor said the exam is open-book"), propose an "add_note" action.
+  This creates a new, separate note — it never edits or merges into an existing one, since notes are
+  now independent entries, not one running document. This is private and saves immediately, no
+  confirmation card needed.
 - If the user asks you to set a goal for the week or the month (e.g. "set a goal to finish 3 assignments
   this week", "my goal this month is to keep my grades up"), propose a "set_goal" action. Pick "period"
   as "week" or "month" based on what they said, and write "label" as a short, clear restatement of the
@@ -220,7 +232,7 @@ Rules:
   | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}}
   | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "mode": "text" | "file", "textAnswer": string | null}}
   | {"type": "add_todo", "todo": {"text": string}}
-  | {"type": "update_notes", "notes": {"mode": "append" | "replace", "content": string}}
+  | {"type": "add_note", "note": {"content": string}}
   | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}
   | {"type": "generate_pdf", "pdf": {"title": string, "content": string}}
 }

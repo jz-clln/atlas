@@ -34,8 +34,6 @@ export function GoalsWidget() {
       .from("goals")
       .select("id, label, period, pct, period_start")
       .eq("user_id", userId)
-      // Only the current week's and current month's goals — older ones
-      // stay in the table for history but drop off this view.
       .in("period_start", [startOfPeriod("week"), startOfPeriod("month")])
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
@@ -49,22 +47,37 @@ export function GoalsWidget() {
     };
   }, [userId]);
 
+  async function remove(id: string) {
+    const prev = goals;
+    setGoals((g) => g.filter((item) => item.id !== id));
+    const { error } = await supabase.from("goals").delete().eq("id", id);
+    if (error) setGoals(prev);
+  }
+
   return (
     <WidgetCard title="Goals">
       {loading ? (
         <p className="text-sm text-slate">Loading…</p>
       ) : goals.length === 0 ? (
         <p className="text-sm text-slate">
-          No goals yet. Try telling Atlas something like "set a goal to finish 3 assignments this
-          week."
+          No goals yet."
         </p>
       ) : (
         <ul className="space-y-3">
           {goals.map((goal) => (
             <li key={goal.id}>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between gap-2 text-sm">
                 <span className="text-charcoal">{goal.label}</span>
-                <span className="text-xs text-slate">{goal.pct}%</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-slate">{goal.pct}%</span>
+                  <button
+                    onClick={() => remove(goal.id)}
+                    aria-label="Remove goal"
+                    className="text-xs text-slate hover:text-charcoal"
+                  >
+                    ✕
+                  </button>
+                </span>
               </div>
               <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-cloud">
                 <div className="h-full rounded-full bg-mist" style={{ width: `${goal.pct}%` }} />

@@ -159,7 +159,7 @@ Rules:
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      max_tokens: MAX_TOKENS,
+      max_completion_tokens: MAX_TOKENS,
       messages: openaiMessages,
       response_format: { type: "json_object" },
     }),

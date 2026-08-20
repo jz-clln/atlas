@@ -258,3 +258,180 @@ export async function createCourseWork(
   }
   return res.json();
 }
+
+// --- Student submissions: write path (Phase 7 — file/photo turn-in) ---
+//
+// Requires the classroom.coursework.me scope (write, not just readonly) and
+// the drive.file scope for uploads. Both need a fresh OAuth consent — see
+// Login.tsx for where scopes are requested.
+
+type GoogleStudentSubmission = {
+  id: string;
+  state: string;
+  alternateLink?: string;
+};
+
+export async function fetchStudentSubmission(
+  courseId: string,
+  courseWorkId: string,
+  accessToken: string
+): Promise<GoogleStudentSubmission | null> {
+  const data = await classroomFetch(
+    `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions?userId=me`,
+    accessToken
+  );
+  return data.studentSubmissions?.[0] ?? null;
+}
+
+// Uploads a file to the student's Drive using the drive.file scope — the app
+// can only ever see files it creates itself, never the rest of the user's
+// Drive. This is intentionally the least-privileged scope that still works.
+export async function uploadFileToDrive(
+  accessToken: string,
+  fileName: string,
+  mimeType: string,
+  base64Data: string
+): Promise<{ id: string }> {
+  const boundary = "atlas-upload-boundary";
+  const metadata = JSON.stringify({ name: fileName });
+
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType}\r\n` +
+    `Content-Transfer-Encoding: base64\r\n\r\n` +
+    `${base64Data}\r\n` +
+    `--${boundary}--`;
+
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    }
+  );
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Drive upload failed (${res.status}): ${errBody}`);
+  }
+
+  return res.json();
+}
+
+export async function attachDriveFileToSubmission(
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  driveFileId: string,
+  accessToken: string
+): Promise<void> {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}:modifyAttachments`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        addAttachments: [{ driveFile: { id: driveFileId } }],
+      }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Attach failed (${res.status}): ${body}`);
+  }
+}
+
+export async function turnInSubmission(
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  accessToken: string
+): Promise<void> {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}:turnIn`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Turn-in failed (${res.status}): ${body}`);
+  }
+}
+
+// Turns plain typed text into a real Google Doc, using Drive's on-upload
+// conversion (source text/plain -> target application/vnd.google-apps.document).
+// This is how a "text answer" becomes something Classroom can attach to a
+// submission, since ASSIGNMENT-type work only accepts file/link/video
+// attachments — there's no bare-text submission field to write to directly.
+export async function createGoogleDocFromText(
+  accessToken: string,
+  title: string,
+  text: string
+): Promise<{ id: string }> {
+  const boundary = "atlas-doc-boundary";
+  const metadata = JSON.stringify({
+    name: title,
+    mimeType: "application/vnd.google-apps.document",
+  });
+
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: text/plain; charset=UTF-8\r\n\r\n` +
+    `${text}\r\n` +
+    `--${boundary}--`;
+
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    }
+  );
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Doc creation failed (${res.status}): ${errBody}`);
+  }
+
+  return res.json();
+}
+
+// Lets the student pull a submission back out of "turned in" state — the
+// safety valve behind the confirm-before-permanent UI flow.
+export async function reclaimSubmission(
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  accessToken: string
+): Promise<void> {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}:reclaim`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Reclaim failed (${res.status}): ${body}`);
+  }
+}

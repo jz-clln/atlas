@@ -13,16 +13,22 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
  * Scopes requested from Google at sign-in.
- * Phase 1: read-only Classroom access only.
- * The write scope for submitting coursework is deliberately NOT
- * requested here — that gets added in Phase 7, with its own
- * explicit consent step, to keep the token's blast radius small
- * while the rest of the app is still being built and tested.
+ * Phase 7: classroom.coursework.me is now the read/write scope
+ * (replacing the old .readonly variant), and drive.file is added
+ * for uploading submission attachments. drive.file only ever grants
+ * access to files this app itself creates — never the rest of the
+ * user's Drive — to keep the blast radius small.
+ *
+ * Because this still uses prompt: "consent" below, existing users
+ * will be shown the Google consent screen again on their next
+ * sign-in and can grant the new scopes then; no separate migration
+ * flow is needed.
  */
 const CLASSROOM_SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
-  "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+  "https://www.googleapis.com/auth/classroom.coursework.me",
   "https://www.googleapis.com/auth/classroom.announcements.readonly",
+  "https://www.googleapis.com/auth/drive.file",
 ].join(" ");
 
 export async function signInWithGoogleClassroom() {

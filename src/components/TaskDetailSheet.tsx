@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { CourseworkItem, CourseworkMaterial } from "../lib/useClassroomSync";
 import { getTaskDetail } from "../lib/useClassroomSync";
+import { SubmitWorkCard } from "./SubmitWorkCard";
 
 const EASE_OUT_QUINT: [number, number, number, number] = [0.23, 1, 0.32, 1];
 
@@ -118,6 +119,20 @@ export function TaskDetailSheet({ item, courseName, onClose }: Props) {
                   ))}
                 </ul>
               </div>
+            )}
+
+            {shown.work_type === "ASSIGNMENT" && (
+              <SubmitWorkCard
+                courseId={shown.course_id}
+                courseWorkId={shown.id}
+                submissionState={shown.submission_state}
+                onSubmitted={() => {
+                  // Best-effort refresh so materials/state reflect the new
+                  // submission next time this sheet reopens; the card above
+                  // already updates itself instantly regardless.
+                  getTaskDetail(shown.course_id, shown.id).catch(() => {});
+                }}
+              />
             )}
 
             <div className="px-6 pb-2 pt-6">

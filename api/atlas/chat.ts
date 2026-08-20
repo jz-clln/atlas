@@ -128,13 +128,22 @@ Rules:
   "set_class_schedule" action instead. This only saves to their private schedule, not to Classroom, so
   it does not need the same confirm-before-posting caution — but still only propose it when they've
   clearly stated a schedule.
+- If the user asks to submit or turn in work for a specific Classroom assignment, propose a
+  "submit_classroom_work" action. This is ONLY supported for coursework where workType is "ASSIGNMENT" —
+  if the item they mean has a different workType, tell them that's not supported yet instead of proposing
+  an action. Match courseWorkId to a real "id" from the "coursework" list above; never invent one. If they
+  give you the actual answer text in their message, use mode "text" and put that text in textAnswer. If
+  they instead want to attach a photo or file, or they haven't given you text, use mode "file" and leave
+  textAnswer null — you never receive the file yourself, the user picks it when confirming. Exactly like
+  the other two actions, you are only proposing this; it is never sent to Classroom without the user
+  confirming on the card.
 - Only include an action when the request clearly calls for one; otherwise action is null.
 - Pick courseId/courseName only from the real "courses" list above — never invent a course. If "courses"
   is empty, say Classroom isn't connected instead of proposing an action.
 - Use "schedules" and "recentAnnouncements" to answer questions like "do I have class today" or
   "what did my prof say" directly, in your own words — don't just repeat the raw data structure.
 - Respond with STRICT JSON only, no prose outside it, in exactly this shape:
-{"reply": string, "action": null | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}} | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}}}
+{"reply": string, "action": null | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}} | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}} | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "mode": "text" | "file", "textAnswer": string | null}}}
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".
 - "reply" is what the user sees in chat — keep it short and conversational.`;
 

@@ -4,6 +4,7 @@ import { useSession } from "../../lib/useSession";
 import { AtlasOrb } from "../AtlasOrb";
 import { FormattedMessage } from "../FormattedMessage";
 import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
+import { PendingSubmissionCard, type PendingSubmission } from "../PendingSubmissionCard";
 import { VoiceModeOverlay } from "../VoiceModeOverlay";
 
 type Props = {
@@ -23,7 +24,8 @@ type ChatAction =
         startTime: string;
         endTime: string;
       };
-    };
+    }
+  | { type: "submit_classroom_work"; submission: PendingSubmission };
 
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
 // System).
@@ -38,6 +40,9 @@ type ChatAction =
 // - If action.type is "create_classroom_task", Atlas is PROPOSING a task —
 //   it must never be posted without the user clicking "Post to Classroom"
 //   on the confirmation card below.
+// - If action.type is "submit_classroom_work", Atlas is PROPOSING a
+//   submission (text answer or file) for an existing assignment — same
+//   never-without-confirmation rule, handled by PendingSubmissionCard.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 
@@ -51,8 +56,33 @@ export function AtlasWidget({ greeting }: Props) {
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTask, setPendingTask] = useState<PendingClassroomTask | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null);
   const [mode, setMode] = useState<"idle" | "notified">("idle");
   const [voiceOpen, setVoiceOpen] = useState(false);
+
+  // Restores a draft submission left over from before a refresh, lost
+  // connection, or closed tab — so a typed answer or in-progress file
+  // submission isn't silently thrown away.
+  useEffect(() => {
+    if (!userId) return;
+
+    supabase
+      .from("pending_submissions")
+      .select("course_id, course_name, course_work_id, task_title, mode, text_answer")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setPendingSubmission({
+          courseId: data.course_id,
+          courseName: data.course_name,
+          courseWorkId: data.course_work_id,
+          taskTitle: data.task_title,
+          mode: data.mode as "text" | "file",
+          textAnswer: data.text_answer ?? undefined,
+        });
+      });
+  }, [userId]);
 
   // Atlas speaks up on its own the moment the cron job finds a new
   // Classroom announcement — no chat message from the user required.
@@ -108,6 +138,20 @@ export function AtlasWidget({ greeting }: Props) {
 
       if (data.action?.type === "create_classroom_task") {
         setPendingTask(data.action.task);
+      } else if (data.action?.type === "submit_classroom_work") {
+        const s = data.action.submission;
+        setPendingSubmission(s);
+        if (userId) {
+          await supabase.from("pending_submissions").upsert({
+            user_id: userId,
+            course_id: s.courseId,
+            course_name: s.courseName,
+            course_work_id: s.courseWorkId,
+            task_title: s.taskTitle,
+            mode: s.mode,
+            text_answer: s.textAnswer ?? null,
+          });
+        }
       } else if (data.action?.type === "set_class_schedule" && userId) {
         // No Classroom posting involved, so this saves right away rather
         // than needing an approve/cancel card.
@@ -246,6 +290,28 @@ export function AtlasWidget({ greeting }: Props) {
           sending={posting}
           onApprove={approveTask}
           onCancel={() => setPendingTask(null)}
+        />
+      )}
+
+      {pendingSubmission && (
+        <PendingSubmissionCard
+          submission={pendingSubmission}
+          onDone={() => {
+            setHistory((h) => [
+              ...h,
+              { role: "atlas", text: `Turned in "${pendingSubmission.taskTitle}".` },
+            ]);
+            setPendingSubmission(null);
+            if (userId) {
+              supabase.from("pending_submissions").delete().eq("user_id", userId);
+            }
+          }}
+          onCancel={() => {
+            setPendingSubmission(null);
+            if (userId) {
+              supabase.from("pending_submissions").delete().eq("user_id", userId);
+            }
+          }}
         />
       )}
 

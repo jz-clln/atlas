@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../_supabaseServer";
+import { supabaseAdmin } from "../_supabaseServer.js";
 import {
   getValidAccessToken,
   fetchCourses,
@@ -7,7 +7,7 @@ import {
   fetchCourseWork,
   fetchSubmissionState,
   combineDueDateTime,
-} from "../_google";
+} from "../_google.js";
 
 const DONE_STATES = new Set(["TURNED_IN", "RETURNED"]);
 

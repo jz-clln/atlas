@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyUser } from "../_supabaseServer";
-import { getValidAccessToken, createCourseWork } from "../_google";
+import { verifyUser } from "../_supabaseServer.js";
+import { getValidAccessToken, createCourseWork } from "../_google.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {

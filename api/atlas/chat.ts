@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin, verifyUser } from "../_supabaseServer";
+import { supabaseAdmin, verifyUser } from "../_supabaseServer.js";
 
 type ChatMessage = { role: "user" | "atlas"; text: string };
 

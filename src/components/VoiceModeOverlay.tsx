@@ -37,6 +37,15 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   // tell "a send just finished" apart from any other history/sending
   // change — needed for the failure fallback.
   const wasSendingRef = useRef(false);
+  // recognition.onresult is wired up once, inside a mount-only effect — so
+  // it can never "see" a newer sendMessage after AtlasWidget re-renders.
+  // Routing the call through this ref (kept current below) means the
+  // one-time callback always reaches the latest sendMessage/history at
+  // call time, instead of the stale snapshot from when voice mode opened.
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
 
   const orbState: OrbState = sending ? "thinking" : ttsSpeaking ? "speaking" : listening ? "listening" : "idle";
 
@@ -91,7 +100,7 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
       if (finalText.trim()) {
         setListening(false);
         setTranscript("");
-        sendMessage(finalText.trim());
+        sendMessageRef.current(finalText.trim());
       }
     };
 
@@ -134,7 +143,6 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   // reply when I click the mic again" symptom. A real <audio> element
   // playing an actual media file doesn't have that failure mode.
   async function speak(text: string) {
-    console.log("[voice] speak() called:", text.slice(0, 40));
     playbackRef.current?.pause();
     setTtsSpeaking(true);
     setError(null);
@@ -184,13 +192,6 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   // produced no new reply" (timeout, network error, etc.) and resume
   // listening with an error message instead of freezing silently.
   useEffect(() => {
-    console.log("[voice] effect fired", {
-      sending,
-      historyLen: history.length,
-      wasSending: wasSendingRef.current,
-      lastSpoken: lastSpokenIndexRef.current,
-    });
-
     if (sending) {
       wasSendingRef.current = true;
       return;
@@ -202,11 +203,9 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     const lastIndex = history.length - 1;
 
     if (last?.role === "atlas" && lastIndex > lastSpokenIndexRef.current) {
-      console.log("[voice] calling speak() for index", lastIndex, last.text.slice(0, 40));
       lastSpokenIndexRef.current = lastIndex;
       speak(last.text);
     } else if (!closedRef.current) {
-      console.log("[voice] no new atlas reply detected — resuming listening instead");
       setError("Didn't get a reply that time — try again.");
       startListening();
     }

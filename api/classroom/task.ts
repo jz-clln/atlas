@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyUser } from "../_supabaseServer";
-import { getValidAccessToken, fetchCourseWorkDetail } from "../_google";
+import { verifyUser } from "../_supabaseServer.js";
+import { getValidAccessToken, fetchCourseWorkDetail } from "../_google.js";
 
 // GET /api/classroom/task?courseId=...&courseWorkId=...
 //

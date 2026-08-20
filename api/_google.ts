@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "./_supabaseServer";
+import { supabaseAdmin } from "./_supabaseServer.js";
 
 export async function getValidAccessToken(userId: string): Promise<string> {
   const admin = supabaseAdmin();

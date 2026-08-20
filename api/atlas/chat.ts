@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin, verifyUser } from "../_supabaseServer";
-import { getValidAccessToken, fetchCourses, fetchCourseWork, combineDueDateTime } from "../_google";
 
 type ChatMessage = { role: "user" | "atlas"; text: string };
 
@@ -36,56 +35,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const admin = supabaseAdmin();
 
-  const [{ data: todos }, { data: notesRow }, { data: schedules }, { data: recentNotifications }] =
-    await Promise.all([
-      admin.from("todos").select("text, done").eq("user_id", user.id).limit(MAX_TODOS),
-      admin.from("notes").select("content").eq("user_id", user.id).maybeSingle(),
-      admin
-        .from("class_schedules")
-        .select("course_id, course_name, days_of_week, start_time, end_time")
-        .eq("user_id", user.id),
-      admin
-        .from("notifications")
-        .select("title, body, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(MAX_ANNOUNCEMENTS),
-    ]);
+  const [
+    { data: todos },
+    { data: notesRow },
+    { data: schedules },
+    { data: recentNotifications },
+    { data: courseRows },
+    { data: courseworkRows },
+  ] = await Promise.all([
+    admin.from("todos").select("text, done").eq("user_id", user.id).limit(MAX_TODOS),
+    admin.from("notes").select("content").eq("user_id", user.id).maybeSingle(),
+    admin
+      .from("class_schedules")
+      .select("course_id, course_name, days_of_week, start_time, end_time")
+      .eq("user_id", user.id),
+    admin
+      .from("notifications")
+      .select("title, body, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(MAX_ANNOUNCEMENTS),
+    // Read from the tables api/classroom/sync.ts already keeps up to date,
+    // instead of hitting Google live on every single chat message. That
+    // live-fetch-per-message pattern was the actual cause of slow/failed
+    // replies — Classroom API round-trips stacked on top of the AI call
+    // itself could exceed the function's execution window.
+    admin.from("courses").select("id, name").eq("user_id", user.id),
+    admin
+      .from("coursework")
+      .select("id, course_id, title, due_at, work_type, is_done")
+      .eq("user_id", user.id),
+  ]);
 
-  // Pull live Classroom state the same way api/classroom/sync.ts does —
-  // there's no cached courses/coursework table, so this fetches straight
-  // from Google. If the user hasn't connected Classroom (or the token
-  // refresh fails), Atlas just falls back to todos/notes only.
-  let courses: { id: string; name: string }[] = [];
-  let coursework: {
-    id: string;
-    courseId: string;
-    title: string;
-    dueAt: string | null;
-    workType?: string;
-  }[] = [];
-
-  try {
-    const accessToken = await getValidAccessToken(user.id);
-    const rawCourses = await fetchCourses(accessToken);
-    courses = rawCourses.map((c) => ({ id: c.id, name: c.name }));
-
-    const perCourseWork = await Promise.all(
-      rawCourses.map((c) => fetchCourseWork(c.id, accessToken).catch(() => []))
-    );
-    coursework = rawCourses.flatMap((c, i) =>
-      (perCourseWork[i] ?? []).map((cw) => ({
-        id: cw.id,
-        courseId: c.id,
-        title: cw.title,
-        dueAt: combineDueDateTime(cw.dueDate, cw.dueTime),
-        workType: cw.workType,
-      }))
-    );
-  } catch {
-    // No Google tokens on file, or refresh failed — proceed without
-    // Classroom context rather than failing the whole chat request.
-  }
+  const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name }));
+  const coursework = (courseworkRows ?? []).map((cw) => ({
+    id: cw.id,
+    courseId: cw.course_id,
+    title: cw.title,
+    dueAt: cw.due_at,
+    workType: cw.work_type ?? undefined,
+    isDone: cw.is_done,
+  }));
 
   const context = {
     todos: todos ?? [],

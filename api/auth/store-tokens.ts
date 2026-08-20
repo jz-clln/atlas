@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin, verifyUser } from "../_supabaseServer";
+import { supabaseAdmin, verifyUser } from "../_supabaseServer.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {

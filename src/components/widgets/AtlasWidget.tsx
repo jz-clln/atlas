@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSession } from "../../lib/useSession";
 import { AtlasOrb } from "../AtlasOrb";
+import { FormattedMessage } from "../FormattedMessage";
 import { PendingTaskCard, type PendingClassroomTask } from "../PendingTaskCard";
 import { VoiceModeOverlay } from "../VoiceModeOverlay";
 
@@ -213,7 +214,7 @@ export function AtlasWidget({ greeting }: Props) {
               className={`text-sm ${msg.role === "user" ? "text-white/70" : "text-white"}`}
             >
               <span className="text-white/40">{msg.role === "user" ? "You: " : "Atlas: "}</span>
-              {msg.text}
+              <FormattedMessage text={msg.text} />
             </li>
           ))}
 

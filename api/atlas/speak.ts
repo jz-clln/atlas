@@ -1,11 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyUser } from "../_supabaseServer";
-import { synthesizeSpeech } from "../_elevenlabs";
+import { verifyUser } from "../_supabaseServer.js";
+import { synthesizeSpeech } from "../_elevenlabs.js";
 
 // Default Vercel function timeout is 10s. ElevenLabs can take longer than
-// that to finish generating audio for a longer reply, which was cutting
-// playback off mid-sentence once Vercel killed the function. Raising this
-// gives it room to actually finish.
+// that to finish generating audio for a longer reply — raising this gives
+// it room to actually finish instead of getting cut off mid-sentence.
 export const config = {
   maxDuration: 60,
 };

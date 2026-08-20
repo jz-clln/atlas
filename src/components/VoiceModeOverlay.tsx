@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 import { AtlasVoiceOrb, type OrbState } from "./AtlasVoiceOrb";
 
 type AtlasMessage = { role: "user" | "atlas"; text: string };
@@ -27,8 +28,15 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // Holds the ElevenLabs <audio> element currently playing (or last
+  // played), so it can be paused/cleaned up on close or replaced mid-speech.
+  const playbackRef = useRef<HTMLAudioElement | null>(null);
   const closedRef = useRef(false);
   const lastSpokenIndexRef = useRef(-1);
+  // Tracks whether we were mid-send last render, so the effect below can
+  // tell "a send just finished" apart from any other history/sending
+  // change — needed for the failure fallback.
+  const wasSendingRef = useRef(false);
 
   const orbState: OrbState = sending ? "thinking" : ttsSpeaking ? "speaking" : listening ? "listening" : "idle";
 
@@ -101,7 +109,7 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     return () => {
       closedRef.current = true;
       recognitionRef.current?.abort();
-      window.speechSynthesis.cancel();
+      playbackRef.current?.pause();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
     };
@@ -119,29 +127,78 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     }
   }
 
-  function speak(text: string) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.onstart = () => setTtsSpeaking(true);
-    utterance.onend = () => {
+  // Plays Atlas's reply via ElevenLabs instead of browser speechSynthesis.
+  // speechSynthesis has a well-known bug where an utterance queued from
+  // code (not a direct click) can get silently stuck and only flush on the
+  // next real user gesture — which was exactly the "speaks the previous
+  // reply when I click the mic again" symptom. A real <audio> element
+  // playing an actual media file doesn't have that failure mode.
+  async function speak(text: string) {
+    playbackRef.current?.pause();
+    setTtsSpeaking(true);
+    setError(null);
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+
+      const res = await fetch("/api/atlas/speak", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) throw new Error(`TTS endpoint returned ${res.status}`);
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      playbackRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setTtsSpeaking(false);
+        if (!closedRef.current) startListening();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setTtsSpeaking(false);
+      };
+
+      await audio.play();
+    } catch {
+      setError("Couldn't play Atlas's voice — check /api/atlas/speak.");
       setTtsSpeaking(false);
-      if (!closedRef.current) startListening();
-    };
-    utterance.onerror = () => setTtsSpeaking(false);
-    window.speechSynthesis.speak(utterance);
+    }
   }
 
   // Speak Atlas's reply the moment it lands in shared history, then resume
   // listening automatically — this is what makes it a back-and-forth
   // conversation instead of a single question-and-answer.
+  //
+  // wasSendingRef lets this branch detect "a send just finished but
+  // produced no new reply" (timeout, network error, etc.) and resume
+  // listening with an error message instead of freezing silently.
   useEffect(() => {
-    if (sending) return;
+    if (sending) {
+      wasSendingRef.current = true;
+      return;
+    }
+    if (!wasSendingRef.current) return;
+    wasSendingRef.current = false;
+
     const last = history[history.length - 1];
     const lastIndex = history.length - 1;
+
     if (last?.role === "atlas" && lastIndex > lastSpokenIndexRef.current) {
       lastSpokenIndexRef.current = lastIndex;
       speak(last.text);
+    } else if (!closedRef.current) {
+      setError("Didn't get a reply that time — try again.");
+      startListening();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history, sending]);
@@ -149,7 +206,7 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   function handleClose() {
     closedRef.current = true;
     recognitionRef.current?.abort();
-    window.speechSynthesis.cancel();
+    playbackRef.current?.pause();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     onClose();

@@ -134,6 +134,7 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   // reply when I click the mic again" symptom. A real <audio> element
   // playing an actual media file doesn't have that failure mode.
   async function speak(text: string) {
+    console.log("[voice] speak() called:", text.slice(0, 40));
     playbackRef.current?.pause();
     setTtsSpeaking(true);
     setError(null);
@@ -183,6 +184,13 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
   // produced no new reply" (timeout, network error, etc.) and resume
   // listening with an error message instead of freezing silently.
   useEffect(() => {
+    console.log("[voice] effect fired", {
+      sending,
+      historyLen: history.length,
+      wasSending: wasSendingRef.current,
+      lastSpoken: lastSpokenIndexRef.current,
+    });
+
     if (sending) {
       wasSendingRef.current = true;
       return;
@@ -194,9 +202,11 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     const lastIndex = history.length - 1;
 
     if (last?.role === "atlas" && lastIndex > lastSpokenIndexRef.current) {
+      console.log("[voice] calling speak() for index", lastIndex, last.text.slice(0, 40));
       lastSpokenIndexRef.current = lastIndex;
       speak(last.text);
     } else if (!closedRef.current) {
+      console.log("[voice] no new atlas reply detected — resuming listening instead");
       setError("Didn't get a reply that time — try again.");
       startListening();
     }

@@ -3,7 +3,7 @@ import { supabaseAdmin, verifyUser } from "../_supabaseServer.js";
 
 type ChatMessage = { role: "user" | "atlas"; text: string };
 
-const OPENAI_MODEL = "gpt-4o-mini";
+const OPENAI_MODEL = "gpt-5.4-mini";
 
 // Keep token spend predictable regardless of how big todos/notes/history get.
 const MAX_HISTORY_MESSAGES = 10;

@@ -67,6 +67,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq("user_id", user.id),
   ]);
 
+  // Anchor for "now" — without this the model has no reliable way to judge
+  // "today", "overdue", or "this week" from raw ISO timestamps alone.
+  const nowDate = new Date();
+  const nowISO = nowDate.toISOString();
+  const nowHuman = nowDate.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Manila",
+    timeZoneName: "short",
+  });
+
   const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name }));
   const coursework = (courseworkRows ?? []).map((cw) => ({
     id: cw.id,
@@ -75,9 +90,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     dueAt: cw.due_at,
     workType: cw.work_type ?? undefined,
     isDone: cw.is_done,
+    // Precomputed server-side rather than left for the model to work out
+    // from raw timestamps — cheaper, and removes an entire class of "Atlas
+    // got the date math wrong" mistakes.
+    isOverdue: !cw.is_done && !!cw.due_at && new Date(cw.due_at) < nowDate,
   }));
 
   const context = {
+    currentDateTime: { iso: nowISO, human: nowHuman },
     todos: todos ?? [],
     notes: (notesRow?.content ?? "").slice(0, MAX_NOTES_CHARS),
     courses,
@@ -91,10 +111,16 @@ You can see their to-do list, notes, class schedule, recent Classroom announceme
 Classroom courses/coursework below — this is your own memory of their situation, not something you're
 being shown for the first time.
 
+Current date and time — use this as "now" for anything relative (today, tomorrow, overdue, this week):
+${nowHuman} (ISO: ${nowISO})
+
 Dashboard context (JSON):
 ${JSON.stringify(context)}
 
 Rules:
+- Always address the user as "Sir" in your replies (e.g. "Sir, you have three things due this week.").
+- Each coursework item includes "isOverdue", already computed relative to the current date/time above —
+  trust that flag rather than recalculating overdue status yourself from "dueAt".
 - If the user is busy or asks you to create/post a task, propose exactly ONE Classroom task via the
   "create_classroom_task" action. You must NEVER post it yourself — the user always confirms before
   anything reaches Classroom.

@@ -79,7 +79,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     hour: "numeric",
     minute: "2-digit",
     timeZone: "Asia/Manila",
-    timeZoneName: "short",
   });
 
   const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name }));
@@ -119,6 +118,7 @@ ${JSON.stringify(context)}
 
 Rules:
 - Always address the user as "Sir" in your replies (e.g. "Sir, you have three things due this week.").
+- Never use em dashes (—) in replies. Write in plain, natural spoken language, like a normal AI assistant talking to someone, not like a written essay.
 - Each coursework item includes "isOverdue", already computed relative to the current date/time above —
   trust that flag rather than recalculating overdue status yourself from "dueAt".
 - If the user is busy or asks you to create/post a task, propose exactly ONE Classroom task via the

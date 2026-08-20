@@ -10,6 +10,7 @@ const MAX_HISTORY_MESSAGES = 10;
 const MAX_NOTES_CHARS = 1500;
 const MAX_TODOS = 30;
 const MAX_ANNOUNCEMENTS = 8;
+const MAX_GOALS = 10;
 const MAX_TOKENS = 400;
 const MAX_DESCRIPTION_CHARS = 800;
 
@@ -71,6 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { data: recentNotifications },
     { data: courseRows },
     { data: courseworkRows },
+    { data: goalRows },
   ] = await Promise.all([
     admin.from("todos").select("text, done").eq("user_id", user.id).limit(MAX_TODOS),
     admin.from("notes").select("content").eq("user_id", user.id).maybeSingle(),
@@ -94,6 +96,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("coursework")
       .select("id, course_id, title, due_at, work_type, is_done, description, materials")
       .eq("user_id", user.id),
+    admin
+      .from("goals")
+      .select("label, period, pct, period_start")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(MAX_GOALS),
   ]);
 
   // Anchor for "now" — without this the model has no reliable way to judge
@@ -127,6 +135,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map(summarizeMaterial)
       .filter((m): m is NonNullable<typeof m> => m !== null),
   }));
+  const goals = (goalRows ?? []).map((g) => ({
+    label: g.label,
+    period: g.period,
+    pct: g.pct,
+    periodStart: g.period_start,
+  }));
 
   const context = {
     currentDateTime: { iso: nowISO, human: nowHuman },
@@ -136,12 +150,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     coursework,
     schedules: schedules ?? [],
     recentAnnouncements: recentNotifications ?? [],
+    goals,
   };
 
   const systemPrompt = `You are Atlas, an academic assistant embedded in the user's personal dashboard.
-You can see their to-do list, notes, class schedule, recent Classroom announcements, and live Google
-Classroom courses/coursework below — this is your own memory of their situation, not something you're
-being shown for the first time.
+You can see their to-do list, notes, class schedule, recent Classroom announcements, live Google
+Classroom courses/coursework, and current goals below — this is your own memory of their situation, not
+something you're being shown for the first time.
 
 Current date and time — use this as "now" for anything relative (today, tomorrow, overdue, this week):
 ${nowHuman} (ISO: ${nowISO})
@@ -177,13 +192,38 @@ Rules:
   textAnswer null — you never receive the file yourself, the user picks it when confirming. Exactly like
   the other two actions, you are only proposing this; it is never sent to Classroom without the user
   confirming on the card.
-- Only include an action when the request clearly calls for one; otherwise action is null.
+- If the user asks you to add, remember, or remind them of something as a task (e.g. "add buy pens to my
+  list", "remind me to email my professor"), propose an "add_todo" action. This is private and saves
+  immediately, same as set_class_schedule — no confirmation card needed.
+- If the user asks you to write down, note, or save something as a note (e.g. "note that the deadline
+  moved to Friday"), propose an "update_notes" action. Default "mode" to "append" so existing notes are
+  preserved — only use "replace" if the user explicitly asks to clear or rewrite their notes entirely.
+- If the user asks you to set a goal for the week or the month (e.g. "set a goal to finish 3 assignments
+  this week", "my goal this month is to keep my grades up"), propose a "set_goal" action. Pick "period"
+  as "week" or "month" based on what they said, and write "label" as a short, clear restatement of the
+  goal in their own intent, not a verbatim copy of their message.
+- If the user explicitly asks for a PDF, downloadable file, or document (e.g. "make me a PDF of my
+  to-do list", "give me a study guide as a PDF"), propose a "generate_pdf" action. Compose "content"
+  yourself as clean, well-organized plain text with newlines separating sections or list items — don't
+  just dump the raw JSON context into it.
+- Only include an action when the request clearly calls for one; otherwise action is null. Propose at
+  most ONE action per reply, whichever type best matches what the user asked for.
 - Pick courseId/courseName only from the real "courses" list above — never invent a course. If "courses"
-  is empty, say Classroom isn't connected instead of proposing an action.
-- Use "schedules" and "recentAnnouncements" to answer questions like "do I have class today" or
-  "what did my prof say" directly, in your own words — don't just repeat the raw data structure.
+  is empty, say Classroom isn't connected instead of proposing a create_classroom_task, set_class_schedule,
+  or submit_classroom_work action.
+- Use "schedules", "recentAnnouncements", and "goals" to answer questions like "do I have class today",
+  "what did my prof say", or "what are my goals this month" directly, in your own words — don't just
+  repeat the raw data structure.
 - Respond with STRICT JSON only, no prose outside it, in exactly this shape:
-{"reply": string, "action": null | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}} | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}} | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "mode": "text" | "file", "textAnswer": string | null}}}
+{"reply": string, "action": null
+  | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}}
+  | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}}
+  | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "mode": "text" | "file", "textAnswer": string | null}}
+  | {"type": "add_todo", "todo": {"text": string}}
+  | {"type": "update_notes", "notes": {"mode": "append" | "replace", "content": string}}
+  | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}
+  | {"type": "generate_pdf", "pdf": {"title": string, "content": string}}
+}
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".
 - "reply" is what the user sees in chat — keep it short and conversational.`;
 

@@ -11,7 +11,12 @@ type Props = {
   greeting: string;
 };
 
-type AtlasMessage = { role: "user" | "atlas"; text: string };
+type AtlasMessage = {
+  role: "user" | "atlas";
+  text: string;
+  // Only present on an "atlas" message that came with a generate_pdf action.
+  pdf?: { name: string; url: string };
+};
 
 type ChatAction =
   | { type: "create_classroom_task"; task: PendingClassroomTask }
@@ -25,7 +30,11 @@ type ChatAction =
         endTime: string;
       };
     }
-  | { type: "submit_classroom_work"; submission: PendingSubmission };
+  | { type: "submit_classroom_work"; submission: PendingSubmission }
+  | { type: "add_todo"; todo: { text: string } }
+  | { type: "update_notes"; notes: { mode: "append" | "replace"; content: string } }
+  | { type: "set_goal"; goal: { label: string; period: "week" | "month" } }
+  | { type: "generate_pdf"; pdf: { title: string; content: string } };
 
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
 // System).
@@ -34,17 +43,37 @@ type ChatAction =
 // - POST /api/atlas/chat, body: { message: string, history: AtlasMessage[] }
 // - Auth: Supabase access token in the Authorization header
 // - Response: { reply: string, action: null | ChatAction }
-// - The server is expected to load the user's todos, notes, courses, and
-//   coursework and give Atlas all of it as context — Atlas should never
-//   have to be told what's on the dashboard, it should already know.
+// - The server is expected to load the user's todos, notes, courses,
+//   coursework, and goals and give Atlas all of it as context — Atlas
+//   should never have to be told what's on the dashboard, it should
+//   already know.
 // - If action.type is "create_classroom_task", Atlas is PROPOSING a task —
 //   it must never be posted without the user clicking "Post to Classroom"
 //   on the confirmation card below.
 // - If action.type is "submit_classroom_work", Atlas is PROPOSING a
 //   submission (text answer or file) for an existing assignment — same
 //   never-without-confirmation rule, handled by PendingSubmissionCard.
+// - "add_todo", "update_notes", and "set_goal" are private (never touch
+//   Classroom), so they save immediately, same as set_class_schedule —
+//   no approve/cancel card needed for any of them.
+// - "generate_pdf" fetches a rendered PDF from /api/atlas/generate-pdf and
+//   attaches it to the reply message as a downloadable link.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
+const GENERATE_PDF_ENDPOINT = "/api/atlas/generate-pdf";
+
+/** Monday for "week", the 1st for "month" — used as the period_start key on goals. */
+function startOfPeriod(period: "week" | "month"): string {
+  const now = new Date();
+  if (period === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  }
+  const day = now.getDay(); // 0 = Sunday ... 6 = Saturday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  return monday.toISOString().slice(0, 10);
+}
 
 export function AtlasWidget({ greeting }: Props) {
   const { session } = useSession();
@@ -168,6 +197,82 @@ export function AtlasWidget({ greeting }: Props) {
           { onConflict: "user_id,course_id" }
         );
         setHistory((h) => [...h, { role: "atlas", text: `Saved the schedule for ${s.courseName}.` }]);
+      } else if (data.action?.type === "add_todo" && userId) {
+        const t = data.action.todo;
+        const { error: todoError } = await supabase
+          .from("todos")
+          .insert({ user_id: userId, text: t.text, done: false });
+        setHistory((h) => [
+          ...h,
+          {
+            role: "atlas",
+            text: todoError
+              ? "Couldn't add that to your list, Sir. Try again?"
+              : `Added to your list: "${t.text}".`,
+          },
+        ]);
+      } else if (data.action?.type === "update_notes" && userId) {
+        const n = data.action.notes;
+        const { data: existing } = await supabase
+          .from("notes")
+          .select("content")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        const nextContent =
+          n.mode === "append" && existing?.content ? `${existing.content}\n${n.content}` : n.content;
+
+        const { error: notesError } = await supabase
+          .from("notes")
+          .upsert({ user_id: userId, content: nextContent, updated_at: new Date().toISOString() });
+
+        setHistory((h) => [
+          ...h,
+          {
+            role: "atlas",
+            text: notesError ? "Couldn't update your notes, Sir. Try again?" : "Updated your notes.",
+          },
+        ]);
+      } else if (data.action?.type === "set_goal" && userId) {
+        const g = data.action.goal;
+        const { error: goalError } = await supabase.from("goals").insert({
+          user_id: userId,
+          label: g.label,
+          period: g.period,
+          period_start: startOfPeriod(g.period),
+          pct: 0,
+        });
+        setHistory((h) => [
+          ...h,
+          {
+            role: "atlas",
+            text: goalError
+              ? "Couldn't save that goal, Sir. Try again?"
+              : `Added a new ${g.period}ly goal: "${g.label}".`,
+          },
+        ]);
+      } else if (data.action?.type === "generate_pdf") {
+        const p = data.action.pdf;
+        try {
+          const pdfRes = await fetch(GENERATE_PDF_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+            body: JSON.stringify({ title: p.title, content: p.content }),
+          });
+          if (!pdfRes.ok) throw new Error(`PDF endpoint returned ${pdfRes.status}`);
+
+          const blob = await pdfRes.blob();
+          const url = URL.createObjectURL(blob);
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: `Here's your PDF, Sir.`, pdf: { name: `${p.title}.pdf`, url } },
+          ]);
+        } catch {
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: "Couldn't generate that PDF, Sir. Try again?" },
+          ]);
+        }
       }
     } catch {
       setError("Couldn't reach Atlas — check that /api/atlas/chat is deployed.");
@@ -259,6 +364,15 @@ export function AtlasWidget({ greeting }: Props) {
             >
               <span className="text-white/40">{msg.role === "user" ? "You: " : "Atlas: "}</span>
               <FormattedMessage text={msg.text} />
+              {msg.pdf && (
+                <a
+                  href={msg.pdf.url}
+                  download={msg.pdf.name}
+                  className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
+                >
+                  📄 {msg.pdf.name}
+                </a>
+              )}
             </li>
           ))}
 

@@ -72,6 +72,8 @@ export function Dashboard() {
 
   const dueDates = upcoming.filter((c) => c.due_at).map((c) => new Date(c.due_at!));
 
+  const overdue = active.filter((c) => c.due_at && new Date(c.due_at).getTime() < Date.now());
+
   // Nickname wins whenever one's been set — this is the single place every
   // course-name display in this file reads from.
   function courseName(courseId: string) {
@@ -80,15 +82,21 @@ export function Dashboard() {
   }
 
   // Atlas's heads-up, built from what's actually synced — no classes posted,
-  // nothing due, or a pointer to the most urgent thing coming up.
+  // nothing due, or a pointer to the most urgent thing coming up. Overdue
+  // items get an explicit mention rather than silently disappearing, since
+  // they're excluded from dueThisWeek by design.
   const atlasBrief =
     coursework.length === 0
       ? "Nothing's come through from Classroom yet. Check back in a few minutes."
       : active.length === 0
         ? "Everything's turned in. Nothing pending across any of your classes."
-        : dueThisWeek.length === 0
+        : dueThisWeek.length === 0 && overdue.length === 0
           ? `${active.length} open item${active.length === 1 ? "" : "s"}, but nothing due in the next 7 days.`
-          : `${dueThisWeek.length} due this week. Next up is "${upcoming[0].title}" in ${courseName(upcoming[0].course_id)}.`;
+          : dueThisWeek.length === 0
+            ? `Nothing due in the next 7 days, but ${overdue.length} thing${overdue.length === 1 ? "" : "s"} overdue and still needs attention.`
+            : overdue.length > 0
+              ? `${dueThisWeek.length} due this week, and ${overdue.length} overdue. Next up is ${dueThisWeek[0].title} in ${courseName(dueThisWeek[0].course_id)}.`
+              : `${dueThisWeek.length} due this week. Next up is ${dueThisWeek[0].title} in ${courseName(dueThisWeek[0].course_id)}.`;
 
   return (
     <div className="min-h-screen bg-cloud">

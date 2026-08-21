@@ -16,6 +16,11 @@ type AtlasMessage = {
   text: string;
   // Only present on an "atlas" message that came with a generate_pdf action.
   pdf?: { name: string; url: string };
+  // Only present on an "atlas" message that came with a create_file action.
+  // Same click-to-download pattern as pdf above — the actual file content
+  // lives only in the Blob behind this URL, never in "text"/history, so
+  // Atlas never has to (and never does) read its own generated code back.
+  file?: { name: string; url: string };
 };
 
 type ChatAction =
@@ -62,10 +67,12 @@ type ChatAction =
 //   add_note always creates a new row, never edits an existing one.
 // - "generate_pdf" fetches a rendered PDF from /api/atlas/generate-pdf and
 //   attaches it to the reply message as a downloadable link.
-// - "create_file" never touches the server at all — it's a plain-text
-//   (.txt) download built entirely in the browser via a Blob + throwaway
-//   <a> link, so (like the other private actions) it needs no
-//   confirmation card; there's nothing external it could be posting to.
+// - "create_file" builds a plain-text (.txt) Blob in the browser and
+//   attaches it to the reply message as a click-to-download link — same
+//   pattern as generate_pdf's "pdf" field above, just a "file" field
+//   instead. Nothing is auto-downloaded and nothing touches the server;
+//   the code content lives only in the Blob, never in the visible reply
+//   text or chat history.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 const GENERATE_PDF_ENDPOINT = "/api/atlas/generate-pdf";
@@ -292,21 +299,19 @@ export function AtlasWidget({ greeting }: Props) {
         try {
           const blob = new Blob([f.content], { type: "text/plain" });
           const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = safeName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          // Attached as a clickable card on the message, same pattern as
+          // generate_pdf's "pdf" field — not auto-downloaded. The Blob is
+          // the only place f.content ever lives; it's never pushed into
+          // "text" or history, so Atlas never reads its own generated code
+          // back on a later turn.
           setHistory((h) => [
             ...h,
-            { role: "atlas", text: `Saved "${safeName}", Sir. Check your downloads.` },
+            { role: "atlas", text: `Here's your file, Sir.`, file: { name: safeName, url } },
           ]);
         } catch {
           setHistory((h) => [
             ...h,
-            { role: "atlas", text: "Couldn't save that file, Sir. Try again?" },
+            { role: "atlas", text: "Couldn't put that file together, Sir. Try again?" },
           ]);
         }
       }
@@ -406,7 +411,16 @@ export function AtlasWidget({ greeting }: Props) {
                   download={msg.pdf.name}
                   className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
                 >
-                  📄 {msg.pdf.name}
+                  ➤ {msg.pdf.name}
+                </a>
+              )}
+              {msg.file && (
+                <a
+                  href={msg.file.url}
+                  download={msg.file.name}
+                  className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
+                >
+                  ➤ {msg.file.name}
                 </a>
               )}
             </li>

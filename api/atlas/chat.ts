@@ -12,8 +12,20 @@ const MAX_ANNOUNCEMENTS = 8;
 const MAX_GOALS = 10;
 const MAX_NOTES = 20;
 const MAX_NOTE_CHARS = 500;
-const MAX_TOKENS = 400;
+// Was 400 — nowhere near enough once generate_pdf/create_file responses
+// need to fit a real file's content inside the JSON envelope. A truncated
+// response isn't valid JSON, so JSON.parse below fails and the raw
+// half-finished text falls through as the visible reply instead of being
+// parsed into reply/action — which is exactly the raw-JSON-in-chat bug.
+const MAX_TOKENS = 3000;
 const MAX_DESCRIPTION_CHARS = 800;
+// Real cost driver isn't MAX_TOKENS (that's just a ceiling, barely spent on
+// an ordinary short reply) — it's this context, resent in full on every
+// single message regardless of what's being asked. Capping item count and
+// only paying for description/materials on active work keeps a full
+// semester's worth of synced coursework from taxing every "hey Atlas".
+const MAX_COURSEWORK_ITEMS = 20;
+const MAX_MATERIALS_PER_ITEM = 3;
 
 // Same materials union Classroom returns everywhere else in this app —
 // flattened here to {title, url} pairs so Atlas gets something useful
@@ -125,7 +137,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   });
 
   const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name, nickname: c.nickname }));
-  const coursework = (courseworkRows ?? []).map((cw) => ({
+
+  // Not-done items first (sorted soonest-due first among those), so if
+  // there's more coursework than the cap allows, what gets dropped is old
+  // completed work, not something still active.
+  const sortedCoursework = [...(courseworkRows ?? [])].sort((a, b) => {
+    if (a.is_done !== b.is_done) return a.is_done ? 1 : -1;
+    const aDue = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+    const bDue = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+    return aDue - bDue;
+  });
+
+  const coursework = sortedCoursework.slice(0, MAX_COURSEWORK_ITEMS).map((cw) => ({
     id: cw.id,
     courseId: cw.course_id,
     title: cw.title,
@@ -136,10 +159,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // from raw timestamps — cheaper, and removes an entire class of "Atlas
     // got the date math wrong" mistakes.
     isOverdue: !cw.is_done && !!cw.due_at && new Date(cw.due_at) < nowDate,
-    description: cw.description ? cw.description.slice(0, MAX_DESCRIPTION_CHARS) : null,
-    materials: ((cw.materials ?? []) as CourseworkMaterial[])
-      .map(summarizeMaterial)
-      .filter((m): m is NonNullable<typeof m> => m !== null),
+    // Full description/materials only for work that's still open — a
+    // finished assignment's content is rarely what a message is about, and
+    // it's the single biggest per-item cost otherwise.
+    description: !cw.is_done && cw.description ? cw.description.slice(0, MAX_DESCRIPTION_CHARS) : null,
+    materials: !cw.is_done
+      ? ((cw.materials ?? []) as CourseworkMaterial[])
+          .slice(0, MAX_MATERIALS_PER_ITEM)
+          .map(summarizeMaterial)
+          .filter((m): m is NonNullable<typeof m> => m !== null)
+      : [],
   }));
   const goals = (goalRows ?? []).map((g) => ({
     label: g.label,
@@ -180,12 +209,14 @@ Rules:
 - Each coursework item includes "isOverdue", already computed relative to the current date/time above —
   trust that flag rather than recalculating overdue status yourself from "dueAt".
 - Each coursework item may include "description" (the actual assignment instructions/question text, when
-  Classroom provided one) and "materials" (attached files, links, videos, or Google Forms). Use these to
-  actually help with content — explaining a question, drafting an answer — instead of only ever referring
-  to the title. If a material has kind "google_form", you cannot see what's inside it (no Forms API
-  integration exists) — say so plainly and ask the user to paste or photograph the question instead of
-  guessing or pretending you can see it. Same if description is null/empty and there's no useful material:
-  tell them you don't have the content and ask them to share it.
+  Classroom provided one) and "materials" (attached files, links, videos, or Google Forms). These are only
+  included for items that are still open (isDone is false) — a finished item will always show null/empty
+  for both, that's expected and not missing data, don't comment on it. For open items, use description and
+  materials to actually help with content — explaining a question, drafting an answer — instead of only
+  ever referring to the title. If a material has kind "google_form", you cannot see what's inside it (no
+  Forms API integration exists) — say so plainly and ask the user to paste or photograph the question
+  instead of guessing or pretending you can see it. Same if description is null/empty and there's no
+  useful material: tell them you don't have the content and ask them to share it.
 - Each course may have a "nickname" the user has set for it. If present, always refer to that course by
   its nickname in your replies instead of its raw Classroom name — that's what they've told you to call
   it. Still match on the real "id" (not the nickname) whenever an action needs a courseId.

@@ -34,6 +34,7 @@ type ChatAction =
   | { type: "add_todo"; todo: { text: string } }
   | { type: "add_note"; note: { content: string } }
   | { type: "set_goal"; goal: { label: string; period: "week" | "month" } }
+  | { type: "set_course_nickname"; nickname: { courseId: string; nickname: string } }
   | { type: "generate_pdf"; pdf: { title: string; content: string } };
 
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
@@ -265,6 +266,21 @@ export function AtlasWidget({ greeting }: Props) {
             { role: "atlas", text: "Couldn't generate that PDF, Sir. Try again?" },
           ]);
         }
+      } else if (data.action?.type === "set_course_nickname") {
+        const n = data.action.nickname;
+        const { error: nicknameError } = await supabase
+          .from("courses")
+          .update({ nickname: n.nickname })
+          .eq("id", n.courseId);
+        setHistory((h) => [
+          ...h,
+          {
+            role: "atlas",
+            text: nicknameError
+              ? "Couldn't save that nickname, Sir. Try again?"
+              : `Got it. I'll call it "${n.nickname}" from now on.`,
+          },
+        ]);
       }
     } catch {
       setError("Couldn't reach Atlas — check that /api/atlas/chat is deployed.");

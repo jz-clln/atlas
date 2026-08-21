@@ -97,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // live-fetch-per-message pattern was the actual cause of slow/failed
     // replies — Classroom API round-trips stacked on top of the AI call
     // itself could exceed the function's execution window.
-    admin.from("courses").select("id, name").eq("user_id", user.id),
+    admin.from("courses").select("id, name, nickname").eq("user_id", user.id),
     admin
       .from("coursework")
       .select("id, course_id, title, due_at, work_type, is_done, description, materials")
@@ -124,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     timeZone: "Asia/Manila",
   });
 
-  const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name }));
+  const courses = (courseRows ?? []).map((c) => ({ id: c.id, name: c.name, nickname: c.nickname }));
   const coursework = (courseworkRows ?? []).map((cw) => ({
     id: cw.id,
     courseId: cw.course_id,
@@ -186,6 +186,13 @@ Rules:
   integration exists) — say so plainly and ask the user to paste or photograph the question instead of
   guessing or pretending you can see it. Same if description is null/empty and there's no useful material:
   tell them you don't have the content and ask them to share it.
+- Each course may have a "nickname" the user has set for it. If present, always refer to that course by
+  its nickname in your replies instead of its raw Classroom name — that's what they've told you to call
+  it. Still match on the real "id" (not the nickname) whenever an action needs a courseId.
+- If the user tells you to call a course by a different name (e.g. "call CC4 'Data Structures' from now
+  on", "nickname my algorithms class DSA"), propose a "set_course_nickname" action. Match courseId to a
+  real course from the "courses" list above using whatever they said (its current name or nickname) —
+  never invent a course. This is private and saves immediately, no confirmation card needed.
 - If the user is busy or asks you to create/post a task, propose exactly ONE Classroom task via the
   "create_classroom_task" action. You must NEVER post it yourself — the user always confirms before
   anything reaches Classroom.
@@ -234,6 +241,7 @@ Rules:
   | {"type": "add_todo", "todo": {"text": string}}
   | {"type": "add_note", "note": {"content": string}}
   | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}
+  | {"type": "set_course_nickname", "nickname": {"courseId": string, "nickname": string}}
   | {"type": "generate_pdf", "pdf": {"title": string, "content": string}}
 }
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".

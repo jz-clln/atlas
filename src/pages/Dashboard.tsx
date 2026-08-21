@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { signOut } from "../lib/supabase";
+import { useEffect, useState } from "react";
+import { signOut, supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { useClassroomSync } from "../lib/useClassroomSync";
 import type { CourseworkItem } from "../lib/useClassroomSync";
@@ -17,9 +17,35 @@ export function Dashboard() {
   const { courses, coursework, loading, error, refetch } = useClassroomSync();
   const [showDone, setShowDone] = useState(false);
   const [selected, setSelected] = useState<CourseworkItem | null>(null);
+  const [nicknames, setNicknames] = useState<Record<string, string>>({});
 
   const user = session?.user;
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
+
+  // Nicknames live only in the courses table (set via Atlas chat), separate
+  // from useClassroomSync's Google-facing sync — a lightweight lookup here
+  // rather than threading it through the sync response.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    supabase
+      .from("courses")
+      .select("id, nickname")
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const map: Record<string, string> = {};
+        for (const row of data) {
+          if (row.nickname) map[row.id] = row.nickname;
+        }
+        setNicknames(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   if (loading) {
     return <LoadingScreen label={`Hey ${firstName}! Looking for your assignments.`} />;
@@ -46,7 +72,10 @@ export function Dashboard() {
 
   const dueDates = upcoming.filter((c) => c.due_at).map((c) => new Date(c.due_at!));
 
+  // Nickname wins whenever one's been set — this is the single place every
+  // course-name display in this file reads from.
   function courseName(courseId: string) {
+    if (nicknames[courseId]) return nicknames[courseId];
     return courses.find((c) => c.id === courseId)?.name ?? "Unknown course";
   }
 
@@ -150,7 +179,7 @@ export function Dashboard() {
         </div>
       </main>
 
-      <WidgetDock courses={courses.map((c) => ({ id: c.id, name: c.name }))} />
+      <WidgetDock courses={courses.map((c) => ({ id: c.id, name: courseName(c.id) }))} />
       <MusicWidget />
 
       <TaskDetailSheet

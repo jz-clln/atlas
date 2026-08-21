@@ -9,7 +9,6 @@ import { AtlasWidget } from "../components/widgets/AtlasWidget";
 import { ClockWidget } from "../components/widgets/ClockWidget";
 import { CalendarWidget } from "../components/widgets/CalendarWidget";
 import { ProgressWidget } from "../components/widgets/ProgressWidget";
-import { NotificationsFeed } from "../components/widgets/NotificationsFeed";
 import { MusicWidget } from "../components/widgets/MusicWidget";
 import { WidgetDock } from "../components/WidgetDock";
 
@@ -144,7 +143,6 @@ export function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            <NotificationsFeed />
             <ClockWidget />
             <ProgressWidget completed={done.length} total={coursework.length} />
             <CalendarWidget dueDates={dueDates} />

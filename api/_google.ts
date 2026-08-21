@@ -147,13 +147,26 @@ export async function fetchCourses(accessToken: string): Promise<GoogleCourse[]>
   return data.courses ?? [];
 }
 
+// Classroom's courseWork.list endpoint uses a restricted default field set
+// that does NOT reliably include description/materials, unlike most Google
+// APIs where omitting `fields=` means "return everything" — that's the
+// opposite of what the previous version of this function assumed, and was
+// the actual cause of Atlas seeing empty descriptions/materials for real
+// assignments that clearly have them in the Classroom UI. courseWork.get()
+// (used in fetchCourseWorkDetail below) doesn't have this restriction; only
+// the list call does, so the fix is being explicit about which fields we
+// want here.
+const COURSEWORK_LIST_FIELDS =
+  "courseWork(id,title,description,materials,dueDate,dueTime,workType,state,alternateLink,maxPoints,creationTime,updateTime)";
+
 export async function fetchCourseWork(
   courseId: string,
   accessToken: string
 ): Promise<GoogleCourseWork[]> {
-  // No `fields=` filter is passed, so Classroom already returns the full
-  // resource — materials, maxPoints, creationTime, updateTime included.
-  const data = await classroomFetch(`/courses/${courseId}/courseWork`, accessToken);
+  const data = await classroomFetch(
+    `/courses/${courseId}/courseWork?fields=${encodeURIComponent(COURSEWORK_LIST_FIELDS)}`,
+    accessToken
+  );
   return data.courseWork ?? [];
 }
 

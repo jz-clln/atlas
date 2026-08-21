@@ -35,7 +35,8 @@ type ChatAction =
   | { type: "add_note"; note: { content: string } }
   | { type: "set_goal"; goal: { label: string; period: "week" | "month" } }
   | { type: "set_course_nickname"; nickname: { courseId: string; nickname: string } }
-  | { type: "generate_pdf"; pdf: { title: string; content: string } };
+  | { type: "generate_pdf"; pdf: { title: string; content: string } }
+  | { type: "create_file"; file: { filename: string; content: string } };
 
 // Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
 // System).
@@ -54,13 +55,17 @@ type ChatAction =
 // - If action.type is "submit_classroom_work", Atlas is PROPOSING a
 //   submission (text answer or file) for an existing assignment — same
 //   never-without-confirmation rule, handled by PendingSubmissionCard.
-// - "add_todo", "add_note", and "set_goal" are private (never touch
-//   Classroom), so they save immediately, same as set_class_schedule —
-//   no approve/cancel card needed for any of them. Notes are discrete
-//   entries now (a real table), not one editable blob — add_note always
-//   creates a new row, never edits an existing one.
+// - "add_todo", "add_note", "set_goal", and "set_course_nickname" are
+//   private (never touch Classroom), so they save immediately, same as
+//   set_class_schedule — no approve/cancel card needed for any of them.
+//   Notes are discrete entries now (a real table), not one editable blob —
+//   add_note always creates a new row, never edits an existing one.
 // - "generate_pdf" fetches a rendered PDF from /api/atlas/generate-pdf and
 //   attaches it to the reply message as a downloadable link.
+// - "create_file" never touches the server at all — it's a plain-text
+//   (.txt) download built entirely in the browser via a Blob + throwaway
+//   <a> link, so (like the other private actions) it needs no
+//   confirmation card; there's nothing external it could be posting to.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 const GENERATE_PDF_ENDPOINT = "/api/atlas/generate-pdf";
@@ -281,6 +286,29 @@ export function AtlasWidget({ greeting }: Props) {
               : `Got it. I'll call it "${n.nickname}" from now on.`,
           },
         ]);
+      } else if (data.action?.type === "create_file") {
+        const f = data.action.file;
+        const safeName = f.filename.endsWith(".txt") ? f.filename : `${f.filename}.txt`;
+        try {
+          const blob = new Blob([f.content], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = safeName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: `Saved "${safeName}", Sir. Check your downloads.` },
+          ]);
+        } catch {
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: "Couldn't save that file, Sir. Try again?" },
+          ]);
+        }
       }
     } catch {
       setError("Couldn't reach Atlas — check that /api/atlas/chat is deployed.");

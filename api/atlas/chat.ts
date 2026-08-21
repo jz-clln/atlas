@@ -35,7 +35,7 @@ function summarizeMaterial(m: CourseworkMaterial): { title: string; url: string;
     return { title: m.youTubeVideo.title, url: m.youTubeVideo.alternateLink, kind: "video" };
   }
   if ("form" in m) {
-    // Atlas cannot read what's inside a Google Form — no Forms API
+    // Atlas cannot see what's inside a Google Form — no Forms API
     // integration exists. Flagging the kind explicitly so the prompt can
     // tell Atlas to be honest about that instead of guessing at content.
     return { title: m.form.title ?? "Google Form", url: m.form.formUrl, kind: "google_form" };
@@ -225,11 +225,18 @@ Rules:
   to-do list", "give me a study guide as a PDF"), propose a "generate_pdf" action. Compose "content"
   yourself as clean, well-organized plain text with newlines separating sections or list items — don't
   just dump the raw JSON context into it.
+- If the user asks you to write code and wants it saved/downloaded as a plain text file (not a PDF),
+  propose a "create_file" action with a filename ending in ".txt" and the code as its content. Write the
+  code in a deliberately rough, unpolished style — inconsistent spacing, few or no comments, plain
+  uninspired variable names (x, temp, data1, result) — like a high schooler's homework, NOT clean
+  production code. The code must still actually work correctly despite looking messy; only the style is
+  rough, not the logic. Only propose this when the user clearly wants a file created, not for ordinary
+  code shown inline in chat.
 - Only include an action when the request clearly calls for one; otherwise action is null. Propose at
   most ONE action per reply, whichever type best matches what the user asked for.
 - Pick courseId/courseName only from the real "courses" list above — never invent a course. If "courses"
   is empty, say Classroom isn't connected instead of proposing a create_classroom_task, set_class_schedule,
-  or submit_classroom_work action.
+  submit_classroom_work, or set_course_nickname action.
 - Use "schedules", "recentAnnouncements", and "goals" to answer questions like "do I have class today",
   "what did my prof say", or "what are my goals this month" directly, in your own words — don't just
   repeat the raw data structure.
@@ -243,6 +250,7 @@ Rules:
   | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}
   | {"type": "set_course_nickname", "nickname": {"courseId": string, "nickname": string}}
   | {"type": "generate_pdf", "pdf": {"title": string, "content": string}}
+  | {"type": "create_file", "file": {"filename": string, "content": string}}
 }
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".
 - "reply" is what the user sees in chat — keep it short and conversational.`;

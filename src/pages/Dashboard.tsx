@@ -186,12 +186,10 @@ export function Dashboard() {
             </div>
           </StatTile>
 
-          <StatTile label="This week">
-            <p className="text-lg font-semibold text-ink">{dueThisWeek.length}</p>
+          <StatTile label="Remaining">
+            <p className="text-lg font-semibold text-ink">{active.length}</p>
             <p className="mt-0.5 truncate text-[11px] text-slate">
-              {dueThisWeek.length > 0
-                ? `Next ${dueThisWeek[0].due_at ? new Date(dueThisWeek[0].due_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}`
-                : "All clear"}
+              {overdue.length > 0 ? `${overdue.length} overdue` : "On track"}
             </p>
           </StatTile>
         </div>

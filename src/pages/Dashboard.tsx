@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { signOut, supabase } from "../lib/supabase";
 import { useSession } from "../lib/useSession";
 import { useClassroomSync } from "../lib/useClassroomSync";
@@ -17,6 +17,15 @@ export function Dashboard() {
   const [showDone, setShowDone] = useState(false);
   const [selected, setSelected] = useState<CourseworkItem | null>(null);
   const [nicknames, setNicknames] = useState<Record<string, string>>({});
+
+  // Drives only the compact "Now" tile in the mobile stats row below — a
+  // separate, lighter tick than ClockWidget's own (desktop keeps using
+  // ClockWidget exactly as before, unaffected by this).
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const user = session?.user;
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] ?? "boss";
@@ -146,24 +155,45 @@ export function Dashboard() {
           </p>
         )}
 
-        {/* Utility widgets — a horizontally swipeable strip on mobile (the
-            native iOS "widget gallery" feel), the original vertical sidebar
-            stack on desktop. Same three components either way, just a
-            different container per breakpoint. */}
-        <div className="-mx-5 mt-6 flex items-stretch gap-3 overflow-x-auto px-5 pb-1 snap-x snap-mandatory [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-          {/* [&>div]:h-full forces each widget's own card (WidgetCard's root
-              div) to fill this wrapper, so flex's default row-stretch
-              actually produces matching card heights across the strip
-              instead of just stretching invisible wrapper divs. */}
-          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
-            <ClockWidget />
-          </div>
-          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
-            <ProgressWidget completed={done.length} total={coursework.length} />
-          </div>
-          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
-            <CalendarWidget dueDates={dueDates} />
-          </div>
+        {/* Compact stats row — mobile only. Three full WidgetCards in a
+            scroll strip meant extra swiping/scrolling before reaching the
+            task list, which is the opposite of "glanceable." This is a
+            single non-scrolling row of small at-a-glance tiles instead —
+            the iOS "home screen widget" size class, not the "app screen"
+            size class. Desktop keeps the original full-size sidebar
+            widgets untouched below. */}
+        <div className="mt-5 grid grid-cols-3 gap-2 md:hidden">
+          <StatTile label="Now">
+            <p className="text-lg font-semibold tabular-nums text-ink">
+              {now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-slate">
+              {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+          </StatTile>
+
+          <StatTile label="Progress">
+            <p className="text-lg font-semibold text-ink">
+              {coursework.length > 0 ? Math.round((done.length / coursework.length) * 100) : 0}%
+            </p>
+            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-cloud">
+              <div
+                className="h-full rounded-full bg-ink transition-all duration-500 ease-out"
+                style={{
+                  width: `${coursework.length > 0 ? Math.round((done.length / coursework.length) * 100) : 0}%`,
+                }}
+              />
+            </div>
+          </StatTile>
+
+          <StatTile label="This week">
+            <p className="text-lg font-semibold text-ink">{dueThisWeek.length}</p>
+            <p className="mt-0.5 truncate text-[11px] text-slate">
+              {dueThisWeek.length > 0
+                ? `Next ${dueThisWeek[0].due_at ? new Date(dueThisWeek[0].due_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}`
+                : "All clear"}
+            </p>
+          </StatTile>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-8 md:mt-10 lg:grid-cols-3">
@@ -261,6 +291,15 @@ function CourseworkRow({
         </div>
       </button>
     </li>
+  );
+}
+
+function StatTile({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-mist bg-white px-3 py-2.5">
+      <p className="truncate text-[10px] font-medium uppercase tracking-wide text-slate">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
   );
 }
 

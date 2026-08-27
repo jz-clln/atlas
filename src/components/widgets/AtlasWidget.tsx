@@ -348,7 +348,7 @@ export function AtlasWidget({ greeting }: Props) {
   }
 
   return (
-    <div className="w-full rounded-3xl border border-mist bg-ink p-6 text-white">
+    <div className="w-full rounded-3xl border border-mist bg-ink p-5 text-white md:p-6">
       {/* Scoped styles for the thin scrollbar and the thinking-dots animation.
           Kept local to this component so no global CSS or new dependency
           (e.g. framer-motion) is required. */}
@@ -388,7 +388,7 @@ export function AtlasWidget({ greeting }: Props) {
 
       <div className="flex items-center gap-3">
         <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-white/60">Atlas</p>
           <p className="text-sm text-white/90">{greeting}</p>
         </div>
@@ -396,40 +396,56 @@ export function AtlasWidget({ greeting }: Props) {
 
       <div className="mt-4 h-px w-full bg-white/10" />
 
+      {/* Chat history — iMessage-style bubbles: alignment and color carry
+          who's speaking, so there's no need for "You:"/"Atlas:" labels
+          cluttering every line. Slightly taller max-height than before
+          since bubbles take a bit more vertical room than plain text
+          lines did. */}
       {(history.length > 0 || sending) && (
-        <ul className="atlas-thin-scroll mt-4 max-h-40 space-y-2 overflow-y-auto pr-1">
+        <ul className="atlas-thin-scroll mt-4 max-h-56 space-y-2 overflow-y-auto pr-1 md:max-h-40">
           {history.map((msg, i) => (
-            <li
-              key={i}
-              className={`text-sm ${msg.role === "user" ? "text-white/70" : "text-white"}`}
-            >
-              <span className="text-white/40">{msg.role === "user" ? "You: " : "Atlas: "}</span>
-              <FormattedMessage text={msg.text} />
-              {msg.pdf && (
-                <a
-                  href={msg.pdf.url}
-                  download={msg.pdf.name}
-                  className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
-                >
-                  ➤  {msg.pdf.name}
-                </a>
-              )}
-              {msg.file && (
-                <a
-                  href={msg.file.url}
-                  download={msg.file.name}
-                  className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
-                >
-                  ➤  {msg.file.name}
-                </a>
-              )}
+            <li key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-snug ${
+                  msg.role === "user"
+                    ? "rounded-br-md bg-white text-ink"
+                    : "rounded-bl-md bg-white/10 text-white"
+                }`}
+              >
+                <FormattedMessage text={msg.text} />
+                {msg.pdf && (
+                  <a
+                    href={msg.pdf.url}
+                    download={msg.pdf.name}
+                    className={`mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      msg.role === "user"
+                        ? "border-ink/10 text-ink/70 hover:border-ink/20 hover:text-ink"
+                        : "border-white/15 text-white/80 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    ➤  {msg.pdf.name}
+                  </a>
+                )}
+                {msg.file && (
+                  <a
+                    href={msg.file.url}
+                    download={msg.file.name}
+                    className={`mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      msg.role === "user"
+                        ? "border-ink/10 text-ink/70 hover:border-ink/20 hover:text-ink"
+                        : "border-white/15 text-white/80 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    ➤  {msg.file.name}
+                  </a>
+                )}
+              </div>
             </li>
           ))}
 
           {sending && (
-            <li className="flex items-center gap-1.5 text-sm text-white">
-              <span className="text-white/40">Atlas: </span>
-              <span className="flex items-center gap-1">
+            <li className="flex justify-start">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-white/10 px-3.5 py-2.5">
                 <span
                   className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
                   style={{ animationDelay: "0ms" }}
@@ -442,7 +458,7 @@ export function AtlasWidget({ greeting }: Props) {
                   className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
                   style={{ animationDelay: "300ms" }}
                 />
-              </span>
+              </div>
             </li>
           )}
         </ul>
@@ -479,12 +495,16 @@ export function AtlasWidget({ greeting }: Props) {
         />
       )}
 
+      {/* Compose bar — iMessage-style full pill instead of a rounded
+          rectangle, and the mic button gets a guaranteed 44px tap target
+          on all sizes instead of just enough padding to look right on a
+          mouse. */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           sendMessage(draft);
         }}
-        className="mt-4 flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5"
+        className="mt-4 flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 py-1.5 pl-4 pr-1.5"
       >
         <input
           value={draft}
@@ -497,7 +517,7 @@ export function AtlasWidget({ greeting }: Props) {
           type="button"
           onClick={() => setVoiceOpen(true)}
           aria-label="Start voice mode"
-          className="shrink-0 rounded-full border border-white/15 p-2 text-white/70 transition-colors hover:border-white/30 hover:text-white"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
             <rect x="9" y="3" width="6" height="11" rx="3" />

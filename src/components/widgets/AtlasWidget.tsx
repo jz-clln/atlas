@@ -411,7 +411,7 @@ export function AtlasWidget({ greeting }: Props) {
                   download={msg.pdf.name}
                   className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
                 >
-                  ➤ {msg.pdf.name}
+                  ➤  {msg.pdf.name}
                 </a>
               )}
               {msg.file && (
@@ -420,7 +420,7 @@ export function AtlasWidget({ greeting }: Props) {
                   download={msg.file.name}
                   className="mt-1 flex w-fit items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
                 >
-                  ➤ {msg.file.name}
+                  ➤  {msg.file.name}
                 </a>
               )}
             </li>

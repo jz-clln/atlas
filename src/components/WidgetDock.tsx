@@ -9,6 +9,12 @@ import { StudyPlannerWidget } from "./widgets/StudyPlannerWidget";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
+// Below this width the dock renders as a bottom nav + bottom sheet instead
+// of the side rail + draggable window. Matches Tailwind's `md` breakpoint
+// so the JS-driven behavior (sheet vs. draggable popup) lines up with the
+// CSS-driven layout (bottom bar vs. side rail) below.
+const MOBILE_BREAKPOINT = 768;
+
 type WidgetKey = "schedule" | "todo" | "notes" | "goals" | "planner";
 type Course = { id: string; name: string };
 type Position = { x: number; y: number };
@@ -28,12 +34,37 @@ const ITEMS: { key: WidgetKey; label: string; icon: ReactNode }[] = [
 
 const DEFAULT_SIZE: Size = { width: 380, height: 480 };
 
+// Tracks whether we're under the mobile breakpoint. CSS (`hidden md:flex` /
+// `flex md:hidden`) handles which nav is visible, but the popup itself needs
+// this in JS to decide between a draggable window (desktop) and a bottom
+// sheet (mobile) — those are different interaction models, not just
+// different styling.
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < breakpoint : false
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    function onChange() {
+      setIsMobile(mql.matches);
+    }
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 export function WidgetDock({ courses }: Props) {
   const [active, setActive] = useState<WidgetKey | null>(null);
+  const isMobile = useIsMobile();
 
   // Remembers each widget's last dragged/resized position+size, so
   // reopening one puts it back where you left it instead of resetting to
-  // the default spot every time.
+  // the default spot every time. (Desktop only — the mobile sheet always
+  // opens full-width from the bottom, so there's nothing to remember there.)
   const positionsRef = useRef<Partial<Record<WidgetKey, Position>>>({});
   const sizesRef = useRef<Partial<Record<WidgetKey, Size>>>({});
 
@@ -70,15 +101,58 @@ export function WidgetDock({ courses }: Props) {
     return { x: 96, y };
   }
 
+  function renderWidgetContent() {
+    return (
+      <>
+        {active === "schedule" && <ScheduleWidget courses={courses} />}
+        {active === "todo" && <TodoWidget courses={courses} />}
+        {active === "notes" && <NotesWidget />}
+        {active === "goals" && <GoalsWidget />}
+        {active === "planner" && <StudyPlannerWidget />}
+      </>
+    );
+  }
+
+  function renderSheetHeader() {
+    return (
+      <div className="flex flex-1 items-center justify-between">
+        <span>{activeItem?.label}</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={resetActiveWidget}
+            aria-label="Reset position and size"
+            title="Reset position and size"
+            className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
+          >
+            <ResetIcon />
+          </button>
+          <button
+            onClick={() => setActive(null)}
+            aria-label="Close"
+            className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* Click-away layer — invisible, just closes the popup */}
+      {/* Click-away layer. On mobile it doubles as the sheet's backdrop
+          (dimmed), on desktop it stays invisible so it doesn't obscure the
+          other floating widgets. */}
       {active && (
-        <div className="fixed inset-0 z-40" onClick={() => setActive(null)} aria-hidden="true" />
+        <div
+          className={`fixed inset-0 z-40 ${isMobile ? "bg-ink/30 backdrop-blur-[2px]" : ""}`}
+          onClick={() => setActive(null)}
+          aria-hidden="true"
+        />
       )}
 
-      {/* The rail itself */}
-      <div className="fixed left-4 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-1 rounded-full border border-mist bg-white/80 p-1.5 shadow-lg backdrop-blur-md">
+      {/* Desktop side rail — unchanged from before, just now scoped to md+ */}
+      <div className="fixed left-4 top-1/2 z-50 hidden -translate-y-1/2 flex-col gap-1 rounded-full border border-mist bg-white/80 p-1.5 shadow-lg backdrop-blur-md md:flex">
         {ITEMS.map((item) => (
           <button
             key={item.key}
@@ -97,9 +171,30 @@ export function WidgetDock({ courses }: Props) {
         ))}
       </div>
 
-      {/* The popup — draggable/resizable, remembers its last position+size */}
+      {/* Mobile bottom nav — icon + label, safe-area aware, thumb-friendly */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-mist bg-white/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {ITEMS.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => toggle(item.key)}
+            aria-label={item.label}
+            aria-pressed={active === item.key}
+            className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 transition-colors ${
+              active === item.key ? "text-ink" : "text-slate"
+            }`}
+          >
+            <span className={active === item.key ? "text-ink" : "text-slate"}>{item.icon}</span>
+            <span className="text-[10px] font-medium leading-none">{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* The popup: draggable/resizable window on desktop, bottom sheet on mobile */}
       <AnimatePresence>
-        {active && activeItem && (
+        {active && activeItem && !isMobile && (
           <motion.div
             key={active}
             initial={{ opacity: 0, scale: 0.97 }}
@@ -111,30 +206,7 @@ export function WidgetDock({ courses }: Props) {
             <div className="pointer-events-auto">
               <DraggableResizable
                 key={`${active}-${resetCounters[active] ?? 0}`}
-                title={
-                  <div className="flex flex-1 items-center justify-between">
-                    <span>{activeItem.label}</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={resetActiveWidget}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        aria-label="Reset position and size"
-                        title="Reset position and size"
-                        className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
-                      >
-                        <ResetIcon />
-                      </button>
-                      <button
-                        onClick={() => setActive(null)}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        aria-label="Close"
-                        className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                }
+                title={renderSheetHeader()}
                 initialPosition={positionsRef.current[active] ?? defaultPositionFor()}
                 initialSize={sizesRef.current[active] ?? DEFAULT_SIZE}
                 onPositionChange={(p) => {
@@ -145,14 +217,35 @@ export function WidgetDock({ courses }: Props) {
                 }}
                 className="border border-mist bg-white/95 shadow-2xl backdrop-blur-md"
               >
-                <div className="p-4">
-                  {active === "schedule" && <ScheduleWidget courses={courses} />}
-                  {active === "todo" && <TodoWidget courses={courses} />}
-                  {active === "notes" && <NotesWidget />}
-                  {active === "goals" && <GoalsWidget />}
-                  {active === "planner" && <StudyPlannerWidget />}
-                </div>
+                <div className="p-4">{renderWidgetContent()}</div>
               </DraggableResizable>
+            </div>
+          </motion.div>
+        )}
+
+        {active && activeItem && isMobile && (
+          <motion.div
+            key={`sheet-${active}`}
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ duration: 0.28, ease: EASE }}
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-white/95 shadow-2xl backdrop-blur-md"
+            style={{
+              // Clears the bottom nav bar (56px content + safe area) so the
+              // sheet never sits underneath it.
+              marginBottom: "calc(56px + env(safe-area-inset-bottom))",
+            }}
+          >
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-mist px-4 py-3 text-sm font-medium text-charcoal">
+              <span aria-hidden className="mr-1 text-slate">⠿</span>
+              {renderSheetHeader()}
+            </div>
+            <div
+              className="min-h-0 flex-1 overflow-auto p-4"
+              style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+            >
+              {renderWidgetContent()}
             </div>
           </motion.div>
         )}

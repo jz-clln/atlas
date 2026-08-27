@@ -492,7 +492,7 @@ export function AtlasWidget({ greeting }: Props) {
   }
 
   return (
-    <div className="atlas-card-enter relative w-full overflow-hidden rounded-[22px] border border-white/[0.08] bg-ink p-3.5 text-white shadow-[0_18px_44px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.05] md:rounded-3xl md:border-mist md:p-6 md:shadow-none md:ring-0">
+    <div className="relative w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-ink p-3.5 text-white md:rounded-3xl md:border-mist md:p-6">
       <style>{`
         .atlas-thin-scroll {
           scrollbar-width: thin;
@@ -525,76 +525,33 @@ export function AtlasWidget({ greeting }: Props) {
         .atlas-typing-dot {
           animation: atlas-typing-bounce 1.1s ease-in-out infinite;
         }
-
-        /* Mobile-only premium polish: card entrance + an ambient pulse
-           behind the orb. Both keyframes are declared INSIDE this
-           max-width query on purpose — that's what guarantees they can
-           never affect md+ (desktop), rather than relying on utility
-           classes alone to hide the effect. */
-        @media (max-width: 767px) {
-          @keyframes atlas-card-in {
-            from {
-              opacity: 0;
-              transform: translateY(14px) scale(0.98);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-          .atlas-card-enter {
-            animation: atlas-card-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
-          }
-
-          @keyframes atlas-orb-pulse {
-            0%,
-            100% {
-              transform: scale(1);
-              opacity: 0.45;
-            }
-            50% {
-              transform: scale(1.18);
-              opacity: 0;
-            }
-          }
-          .atlas-orb-pulse {
-            animation: atlas-orb-pulse 2.4s ease-in-out infinite;
-          }
-        }
       `}</style>
 
       <div className="flex items-center gap-2.5 md:gap-3">
-        <div className="relative shrink-0 scale-[0.82] origin-left md:scale-100">
-          {/* Ambient pulse behind the orb — mobile only, purely decorative.
-              AtlasOrb itself (the black circle + white eyes) is untouched;
-              this just sits behind it as a separate element. */}
-          <span
-            aria-hidden="true"
-            className="atlas-orb-pulse pointer-events-none absolute inset-0 -m-1.5 rounded-full bg-white/10 md:hidden"
-          />
-          <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
+        <div className="shrink-0">
+          <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={40} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[10.5px] font-semibold uppercase tracking-wide text-white/60 md:text-xs md:font-medium">
             Atlas
           </p>
-          <p className="mt-0.5 truncate text-[12.5px] leading-snug text-white/90 md:mt-0 md:text-sm">
+          <p className="mt-0.5 text-[12.5px] leading-snug text-white/90 md:mt-0 md:text-sm">
             {greeting}
           </p>
         </div>
       </div>
 
-      <div className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent md:mt-4 md:bg-none md:bg-white/10" />
+      <div className="mt-3 h-px w-full bg-white/10 md:mt-4" />
 
       {(history.length > 0 || sending) && (
         <ul className="atlas-thin-scroll mt-3 max-h-52 space-y-2 overflow-y-auto pr-1 md:mt-4 md:max-h-40 md:space-y-2">
           {history.map((msg, i) => (
             <li key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug shadow-sm md:rounded-2xl md:px-3.5 md:py-2 md:text-sm md:shadow-none ${
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug md:px-3.5 md:py-2 md:text-sm ${
                   msg.role === "user"
-                    ? "rounded-br-md bg-white text-ink shadow-[0_3px_10px_-3px_rgba(0,0,0,0.15)] md:rounded-br-md md:shadow-none"
-                    : "rounded-bl-md border border-white/10 bg-white/[0.08] text-white backdrop-blur-sm md:rounded-bl-md md:border-0 md:bg-white/10 md:backdrop-blur-none"
+                    ? "rounded-br-md bg-white text-ink"
+                    : "rounded-bl-md border border-white/10 bg-white/[0.08] text-white md:border-0 md:bg-white/10"
                 }`}
               >
                 <FormattedMessage text={msg.text} />
@@ -644,7 +601,7 @@ export function AtlasWidget({ greeting }: Props) {
 
           {sending && (
             <li className="flex justify-start">
-              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.08] px-3.5 py-2.5 backdrop-blur-sm md:rounded-2xl md:rounded-bl-md md:border-0 md:bg-white/10 md:px-3.5 md:py-2.5 md:backdrop-blur-none">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.08] px-3.5 py-2.5 md:border-0 md:bg-white/10">
                 <span
                   className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
                   style={{ animationDelay: "0ms" }}
@@ -699,7 +656,7 @@ export function AtlasWidget({ greeting }: Props) {
           e.preventDefault();
           sendMessage(draft);
         }}
-        className="mt-3 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.06] py-1.5 pl-3.5 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition-colors duration-150 focus-within:border-white/20 focus-within:bg-white/[0.09] md:mt-4 md:border-white/15 md:bg-white/5 md:py-1.5 md:shadow-none md:backdrop-blur-none md:focus-within:border-white/15 md:focus-within:bg-white/5"
+        className="mt-3 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.06] py-1.5 pl-3.5 pr-1.5 transition-colors duration-150 focus-within:border-white/20 focus-within:bg-white/[0.09] md:mt-4 md:border-white/15 md:bg-white/5 md:py-1.5 md:focus-within:border-white/15 md:focus-within:bg-white/5"
       >
         <input
           value={draft}

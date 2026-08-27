@@ -492,7 +492,7 @@ export function AtlasWidget({ greeting }: Props) {
   }
 
   return (
-    <div className="atlas-card-enter relative w-full overflow-hidden rounded-[28px] border border-white/[0.08] bg-ink p-4 text-white shadow-[0_24px_60px_-24px_rgba(0,0,0,0.75)] ring-1 ring-white/[0.05] md:rounded-3xl md:border-mist md:p-6 md:shadow-none md:ring-0">
+    <div className="atlas-card-enter relative w-full overflow-hidden rounded-[22px] border border-white/[0.08] bg-ink p-3.5 text-white shadow-[0_18px_44px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.05] md:rounded-3xl md:border-mist md:p-6 md:shadow-none md:ring-0">
       <style>{`
         .atlas-thin-scroll {
           scrollbar-width: thin;
@@ -563,8 +563,8 @@ export function AtlasWidget({ greeting }: Props) {
         }
       `}</style>
 
-      <div className="flex items-center gap-3.5 md:gap-3">
-        <div className="relative shrink-0">
+      <div className="flex items-center gap-2.5 md:gap-3">
+        <div className="relative shrink-0 scale-[0.82] origin-left md:scale-100">
           {/* Ambient pulse behind the orb — mobile only, purely decorative.
               AtlasOrb itself (the black circle + white eyes) is untouched;
               this just sits behind it as a separate element. */}
@@ -575,33 +575,26 @@ export function AtlasWidget({ greeting }: Props) {
           <AtlasOrb mode={sending ? "thinking" : mode === "notified" ? "searching" : "idle"} size={48} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60 md:text-xs md:font-medium">
-              Atlas
-            </p>
-            <span className="flex items-center gap-1 md:hidden">
-              <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 rounded-full bg-[#34D399] shadow-[0_0_6px_rgba(52,211,153,0.75)]"
-              />
-              <span className="text-[10px] font-medium text-white/40">Active</span>
-            </span>
-          </div>
-          <p className="mt-0.5 text-[13px] leading-snug text-white/90 md:mt-0 md:text-sm">{greeting}</p>
+          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-white/60 md:text-xs md:font-medium">
+            Atlas
+          </p>
+          <p className="mt-0.5 truncate text-[12.5px] leading-snug text-white/90 md:mt-0 md:text-sm">
+            {greeting}
+          </p>
         </div>
       </div>
 
-      <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent md:bg-none md:bg-white/10" />
+      <div className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent md:mt-4 md:bg-none md:bg-white/10" />
 
       {(history.length > 0 || sending) && (
-        <ul className="atlas-thin-scroll mt-4 max-h-64 space-y-2.5 overflow-y-auto pr-1 md:max-h-40 md:space-y-2">
+        <ul className="atlas-thin-scroll mt-3 max-h-52 space-y-2 overflow-y-auto pr-1 md:mt-4 md:max-h-40 md:space-y-2">
           {history.map((msg, i) => (
             <li key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] rounded-[20px] px-4 py-2.5 text-[15px] leading-snug shadow-sm md:rounded-2xl md:px-3.5 md:py-2 md:text-sm md:shadow-none ${
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug shadow-sm md:rounded-2xl md:px-3.5 md:py-2 md:text-sm md:shadow-none ${
                   msg.role === "user"
-                    ? "rounded-br-lg bg-white text-ink shadow-[0_4px_14px_-4px_rgba(0,0,0,0.15)] md:rounded-br-md md:shadow-none"
-                    : "rounded-bl-lg border border-white/10 bg-white/[0.08] text-white backdrop-blur-sm md:rounded-bl-md md:border-0 md:bg-white/10 md:backdrop-blur-none"
+                    ? "rounded-br-md bg-white text-ink shadow-[0_3px_10px_-3px_rgba(0,0,0,0.15)] md:rounded-br-md md:shadow-none"
+                    : "rounded-bl-md border border-white/10 bg-white/[0.08] text-white backdrop-blur-sm md:rounded-bl-md md:border-0 md:bg-white/10 md:backdrop-blur-none"
                 }`}
               >
                 <FormattedMessage text={msg.text} />
@@ -651,7 +644,7 @@ export function AtlasWidget({ greeting }: Props) {
 
           {sending && (
             <li className="flex justify-start">
-              <div className="flex items-center gap-1.5 rounded-[20px] rounded-bl-lg border border-white/10 bg-white/[0.08] px-4 py-3 backdrop-blur-sm md:rounded-2xl md:rounded-bl-md md:border-0 md:bg-white/10 md:px-3.5 md:py-2.5 md:backdrop-blur-none">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.08] px-3.5 py-2.5 backdrop-blur-sm md:rounded-2xl md:rounded-bl-md md:border-0 md:bg-white/10 md:px-3.5 md:py-2.5 md:backdrop-blur-none">
                 <span
                   className="atlas-typing-dot h-1.5 w-1.5 rounded-full bg-white/60"
                   style={{ animationDelay: "0ms" }}
@@ -706,29 +699,29 @@ export function AtlasWidget({ greeting }: Props) {
           e.preventDefault();
           sendMessage(draft);
         }}
-        className="mt-4 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.06] py-2 pl-4 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition-colors duration-150 focus-within:border-white/20 focus-within:bg-white/[0.09] md:border-white/15 md:bg-white/5 md:py-1.5 md:shadow-none md:backdrop-blur-none md:focus-within:border-white/15 md:focus-within:bg-white/5"
+        className="mt-3 flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.06] py-1.5 pl-3.5 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition-colors duration-150 focus-within:border-white/20 focus-within:bg-white/[0.09] md:mt-4 md:border-white/15 md:bg-white/5 md:py-1.5 md:shadow-none md:backdrop-blur-none md:focus-within:border-white/15 md:focus-within:bg-white/5"
       >
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Ask Atlas anything…"
           disabled={sending}
-          className="w-full bg-transparent text-[15px] text-white placeholder:text-white/40 outline-none disabled:cursor-not-allowed md:text-sm"
+          className="w-full bg-transparent text-[14px] text-white placeholder:text-white/40 outline-none disabled:cursor-not-allowed md:text-sm"
         />
         <button
           type="button"
           onClick={() => setVoiceOpen(true)}
           aria-label="Start voice mode"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/70 transition-all duration-150 hover:bg-white/10 hover:text-white active:scale-90 md:bg-transparent md:active:scale-100"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/70 transition-all duration-150 hover:bg-white/10 hover:text-white active:scale-90 md:h-11 md:w-11 md:bg-transparent md:active:scale-100"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 md:h-4 md:w-4">
             <rect x="9" y="3" width="6" height="11" rx="3" />
             <path d="M5 11a7 7 0 0 0 14 0" strokeLinecap="round" />
             <path d="M12 18v3" strokeLinecap="round" />
           </svg>
         </button>
       </form>
-      <p className="mt-2 text-[11px] text-white/40">
+      <p className="mt-1.5 text-[10.5px] text-white/40 md:mt-2 md:text-[11px]">
         {error ?? "Atlas always asks before posting anything to Classroom."}
       </p>
 

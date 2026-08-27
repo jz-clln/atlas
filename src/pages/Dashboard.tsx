@@ -9,7 +9,6 @@ import { AtlasWidget } from "../components/widgets/AtlasWidget";
 import { ClockWidget } from "../components/widgets/ClockWidget";
 import { CalendarWidget } from "../components/widgets/CalendarWidget";
 import { ProgressWidget } from "../components/widgets/ProgressWidget";
-import { MusicWidget } from "../components/widgets/MusicWidget";
 import { WidgetDock } from "../components/WidgetDock";
 
 export function Dashboard() {
@@ -100,20 +99,28 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-cloud">
-      <header className="flex items-center justify-between border-b border-mist px-8 py-5">
-        <p className="text-lg font-semibold text-ink">ATLAS</p>
+      {/* Nav bar — safe-area aware, tighter on mobile so it reads like a
+          native iOS bar instead of a desktop header that got squeezed. */}
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between border-b border-mist bg-cloud/80 px-5 py-4 backdrop-blur-md md:px-8 md:py-5"
+        style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
+      >
+        <p className="text-base font-semibold tracking-tight text-ink md:text-lg">ATLAS</p>
         <button
           onClick={() => signOut()}
-          className="rounded-full border border-mist px-4 py-2 text-sm font-medium text-charcoal transition-colors hover:border-ink hover:text-ink"
+          className="flex min-h-9 items-center rounded-full border border-mist px-4 text-[13px] font-medium text-charcoal transition-colors active:bg-cloud md:min-h-0 md:py-2 md:text-sm md:hover:border-ink md:hover:text-ink"
         >
           Sign out
         </button>
       </header>
 
-      <main className="mx-auto max-w-6xl px-8 py-16">
+      <main
+        className="mx-auto max-w-6xl px-5 pb-28 pt-6 md:px-8 md:py-16"
+        style={{ paddingBottom: "max(7rem, calc(4.5rem + env(safe-area-inset-bottom)))" }}
+      >
         <AtlasWidget greeting={atlasBrief} />
 
-        <h2 className="mt-10 text-3xl font-semibold leading-snug text-ink">
+        <h2 className="mt-8 text-[26px] font-semibold leading-snug tracking-tight text-ink md:mt-10 md:text-3xl">
           Good {timeGreeting}, {firstName}.
           <br />
           <span className="text-charcoal">
@@ -124,7 +131,7 @@ export function Dashboard() {
         </h2>
 
         {error && (
-          <div className="mt-6 rounded-sm border border-mist bg-white px-4 py-3 text-sm text-charcoal">
+          <div className="mt-6 rounded-2xl border border-mist bg-white px-4 py-3 text-sm text-charcoal">
             Couldn't sync: {error}{" "}
             <button onClick={refetch} className="underline hover:text-ink">
               try again
@@ -139,7 +146,27 @@ export function Dashboard() {
           </p>
         )}
 
-        <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* Utility widgets — a horizontally swipeable strip on mobile (the
+            native iOS "widget gallery" feel), the original vertical sidebar
+            stack on desktop. Same three components either way, just a
+            different container per breakpoint. */}
+        <div className="-mx-5 mt-6 flex items-stretch gap-3 overflow-x-auto px-5 pb-1 snap-x snap-mandatory [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+          {/* [&>div]:h-full forces each widget's own card (WidgetCard's root
+              div) to fill this wrapper, so flex's default row-stretch
+              actually produces matching card heights across the strip
+              instead of just stretching invisible wrapper divs. */}
+          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
+            <ClockWidget />
+          </div>
+          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
+            <ProgressWidget completed={done.length} total={coursework.length} />
+          </div>
+          <div className="w-[78%] shrink-0 snap-center [&>div]:h-full">
+            <CalendarWidget dueDates={dueDates} />
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-8 md:mt-10 lg:grid-cols-3">
           <div className="lg:col-span-2">
             {upcoming.length > 0 && (
               <ul className="divide-y divide-mist border-y border-mist">
@@ -179,7 +206,9 @@ export function Dashboard() {
             )}
           </div>
 
-          <div className="space-y-4">
+          {/* Desktop sidebar — unchanged, just hidden on mobile since the
+              strip above covers the same widgets there. */}
+          <div className="hidden space-y-4 md:block">
             <ClockWidget />
             <ProgressWidget completed={done.length} total={coursework.length} />
             <CalendarWidget dueDates={dueDates} />
@@ -188,7 +217,6 @@ export function Dashboard() {
       </main>
 
       <WidgetDock courses={courses.map((c) => ({ id: c.id, name: courseName(c.id) }))} />
-      <MusicWidget />
 
       <TaskDetailSheet
         item={selected}
@@ -217,18 +245,36 @@ function CourseworkRow({
     <li>
       <button
         onClick={onSelect}
-        className="flex w-full items-center justify-between gap-4 py-4 text-left transition-opacity active:opacity-60"
+        className="flex min-h-[64px] w-full items-center justify-between gap-3 py-4 text-left transition-opacity active:opacity-60"
       >
-        <div>
-          <p className="text-sm font-medium text-ink">{item.title}</p>
-          <p className="mt-0.5 text-xs text-slate">{courseName}</p>
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-medium text-ink md:text-sm">{item.title}</p>
+          <p className="mt-0.5 truncate text-xs text-slate">{courseName}</p>
         </div>
-        {dueLabel && (
-          <span className="whitespace-nowrap text-xs font-medium text-charcoal">
-            {dueLabel}
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {dueLabel && (
+            <span className="whitespace-nowrap text-xs font-medium text-charcoal">
+              {dueLabel}
+            </span>
+          )}
+          <ChevronIcon />
+        </div>
       </button>
     </li>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      className="h-3.5 w-3.5 shrink-0 text-mist md:hidden"
+      aria-hidden="true"
+    >
+      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

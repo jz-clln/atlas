@@ -14,13 +14,9 @@ type Props = {
 type AtlasMessage = {
   role: "user" | "atlas";
   text: string;
-  // Only present on an "atlas" message that came with a generate_pdf action.
   pdf?: { name: string; url: string };
-  // Only present on an "atlas" message that came with a create_file action.
-  // Same click-to-download pattern as pdf above — the actual file content
-  // lives only in the Blob behind this URL, never in "text"/history, so
-  // Atlas never has to (and never does) read its own generated code back.
   file?: { name: string; url: string };
+  libraryFile?: { name: string; url: string; folderPath: string };
 };
 
 type ChatAction =
@@ -41,49 +37,97 @@ type ChatAction =
   | { type: "set_goal"; goal: { label: string; period: "week" | "month" } }
   | { type: "set_course_nickname"; nickname: { courseId: string; nickname: string } }
   | { type: "generate_pdf"; pdf: { title: string; content: string } }
-  | { type: "create_file"; file: { filename: string; content: string } };
+  | { type: "create_file"; file: { filename: string; content: string } }
+  | { type: "save_to_library"; library: { folderPath: string; filename: string; content: string; kind: "text" | "pdf" } }
+  | { type: "fetch_from_library"; libraryFetch: { folderPath: string; filename: string } };
 
-// Signature widget: the seat for Atlas (Academic Tutor & Learning Assistance
-// System).
-//
-// Contract with the backend (see api/atlas/chat.ts):
-// - POST /api/atlas/chat, body: { message: string, history: AtlasMessage[] }
-// - Auth: Supabase access token in the Authorization header
-// - Response: { reply: string, action: null | ChatAction }
-// - The server is expected to load the user's todos, notes, courses,
-//   coursework, and goals and give Atlas all of it as context — Atlas
-//   should never have to be told what's on the dashboard, it should
-//   already know.
-// - If action.type is "create_classroom_task", Atlas is PROPOSING a task —
-//   it must never be posted without the user clicking "Post to Classroom"
-//   on the confirmation card below.
-// - If action.type is "submit_classroom_work", Atlas is PROPOSING a
-//   submission (text answer or file) for an existing assignment — same
-//   never-without-confirmation rule, handled by PendingSubmissionCard.
-// - "add_todo", "add_note", "set_goal", and "set_course_nickname" are
-//   private (never touch Classroom), so they save immediately, same as
-//   set_class_schedule — no approve/cancel card needed for any of them.
-//   Notes are discrete entries now (a real table), not one editable blob —
-//   add_note always creates a new row, never edits an existing one.
-// - "generate_pdf" fetches a rendered PDF from /api/atlas/generate-pdf and
-//   attaches it to the reply message as a downloadable link.
-// - "create_file" builds a plain-text (.txt) Blob in the browser and
-//   attaches it to the reply message as a click-to-download link — same
-//   pattern as generate_pdf's "pdf" field above, just a "file" field
-//   instead. Nothing is auto-downloaded and nothing touches the server;
-//   the code content lives only in the Blob, never in the visible reply
-//   text or chat history.
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 const GENERATE_PDF_ENDPOINT = "/api/atlas/generate-pdf";
+const LIBRARY_BUCKET = "library";
+const LIBRARY_SIGNED_URL_TTL_SECONDS = 3600;
 
-/** Monday for "week", the 1st for "month" — used as the period_start key on goals. */
+/**
+ * Row shape returned by the `.select("id")` queries below. Declared once and
+ * reused as an explicit annotation on the ternary results in
+ * resolveOrCreateFolderId/resolveFolderId — THIS IS THE FIX for TS7022.
+ *
+ * `const result = cond ? await a : await b` asks TS to infer result's type
+ * from an expression whose own resolution (through supabase-js's generic
+ * PostgrestFilterBuilder overloads) circles back to needing result's type
+ * first. Giving the ternary a concrete target type breaks that circularity.
+ */
+type FolderIdRow = { data: { id: string } | null };
+
+function splitFolderPath(path: string): string[] {
+  return path.split("/").map((s) => s.trim()).filter(Boolean);
+}
+
+async function resolveOrCreateFolderId(userId: string, path: string): Promise<string | null> {
+  let parentId: string | null = null;
+  for (const segment of splitFolderPath(path)) {
+    const query = supabase
+      .from("library_folders")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("name", segment);
+
+    // FIXED: explicit `: FolderIdRow` annotation removes the TS7022 error.
+    const result: FolderIdRow =
+      parentId === null
+        ? await query.is("parent_id", null).maybeSingle()
+        : await query.eq("parent_id", parentId).maybeSingle();
+    const existing = result.data;
+
+    if (existing) {
+      parentId = existing.id;
+      continue;
+    }
+
+    // Same TS7022 circular-inference fix as the ternaries above: annotate
+    // explicitly instead of letting TS infer through the query chain.
+    const insertResult: { data: { id: string } | null; error: unknown } = await supabase
+      .from("library_folders")
+      .insert({ user_id: userId, parent_id: parentId, name: segment })
+      .select("id")
+      .single();
+    const { data: created, error } = insertResult;
+    if (error || !created) return null;
+    parentId = created.id;
+  }
+  return parentId;
+}
+
+async function resolveFolderId(
+  userId: string,
+  path: string
+): Promise<{ id: string | null; found: boolean }> {
+  let parentId: string | null = null;
+  for (const segment of splitFolderPath(path)) {
+    const query = supabase
+      .from("library_folders")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("name", segment);
+
+    // FIXED: same explicit `: FolderIdRow` annotation as above.
+    const result: FolderIdRow =
+      parentId === null
+        ? await query.is("parent_id", null).maybeSingle()
+        : await query.eq("parent_id", parentId).maybeSingle();
+    const existing = result.data;
+    if (!existing) return { id: null, found: false };
+    parentId = existing.id;
+  }
+  return { id: parentId, found: true };
+}
+
 function startOfPeriod(period: "week" | "month"): string {
   const now = new Date();
   if (period === "month") {
     return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   }
-  const day = now.getDay(); // 0 = Sunday ... 6 = Saturday
+  const day = now.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + diffToMonday);
@@ -104,9 +148,6 @@ export function AtlasWidget({ greeting }: Props) {
   const [mode, setMode] = useState<"idle" | "notified">("idle");
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Restores a draft submission left over from before a refresh, lost
-  // connection, or closed tab — so a typed answer or in-progress file
-  // submission isn't silently thrown away.
   useEffect(() => {
     if (!userId) return;
 
@@ -128,8 +169,6 @@ export function AtlasWidget({ greeting }: Props) {
       });
   }, [userId]);
 
-  // Atlas speaks up on its own the moment the cron job finds a new
-  // Classroom announcement — no chat message from the user required.
   useEffect(() => {
     if (!userId) return;
 
@@ -197,8 +236,6 @@ export function AtlasWidget({ greeting }: Props) {
           });
         }
       } else if (data.action?.type === "set_class_schedule" && userId) {
-        // No Classroom posting involved, so this saves right away rather
-        // than needing an approve/cancel card.
         const s = data.action.schedule;
         await supabase.from("class_schedules").upsert(
           {
@@ -299,11 +336,6 @@ export function AtlasWidget({ greeting }: Props) {
         try {
           const blob = new Blob([f.content], { type: "text/plain" });
           const url = URL.createObjectURL(blob);
-          // Attached as a clickable card on the message, same pattern as
-          // generate_pdf's "pdf" field — not auto-downloaded. The Blob is
-          // the only place f.content ever lives; it's never pushed into
-          // "text" or history, so Atlas never reads its own generated code
-          // back on a later turn.
           setHistory((h) => [
             ...h,
             { role: "atlas", text: `Here's your file, Sir.`, file: { name: safeName, url } },
@@ -312,6 +344,118 @@ export function AtlasWidget({ greeting }: Props) {
           setHistory((h) => [
             ...h,
             { role: "atlas", text: "Couldn't put that file together, Sir. Try again?" },
+          ]);
+        }
+      } else if (data.action?.type === "save_to_library" && userId) {
+        const lib = data.action.library;
+        try {
+          const folderId = await resolveOrCreateFolderId(userId, lib.folderPath);
+          const wantsPdf = lib.kind === "pdf";
+          const safeName = wantsPdf
+            ? lib.filename.endsWith(".pdf")
+              ? lib.filename
+              : `${lib.filename}.pdf`
+            : lib.filename.includes(".")
+              ? lib.filename
+              : `${lib.filename}.txt`;
+
+          let blob: Blob;
+          if (wantsPdf) {
+            const pdfRes = await fetch(GENERATE_PDF_ENDPOINT, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+              body: JSON.stringify({ title: lib.filename, content: lib.content }),
+            });
+            if (!pdfRes.ok) throw new Error(`PDF endpoint returned ${pdfRes.status}`);
+            blob = await pdfRes.blob();
+          } else {
+            blob = new Blob([lib.content], { type: "text/plain" });
+          }
+
+          const id = crypto.randomUUID();
+          const storagePath = `${userId}/${id}-${safeName}`;
+          const { error: uploadError } = await supabase.storage
+            .from(LIBRARY_BUCKET)
+            .upload(storagePath, blob, { contentType: wantsPdf ? "application/pdf" : "text/plain" });
+          if (uploadError) throw uploadError;
+
+          await supabase.from("library_files").insert({
+            id,
+            user_id: userId,
+            folder_id: folderId,
+            name: safeName,
+            storage_path: storagePath,
+            mime_type: wantsPdf ? "application/pdf" : "text/plain",
+            size_bytes: blob.size,
+            created_by: "atlas",
+          });
+
+          const { data: signed } = await supabase.storage
+            .from(LIBRARY_BUCKET)
+            .createSignedUrl(storagePath, LIBRARY_SIGNED_URL_TTL_SECONDS);
+
+          setHistory((h) => [
+            ...h,
+            {
+              role: "atlas",
+              text: `Saved to your library under "${lib.folderPath || "Library"}", Sir.`,
+              libraryFile: signed
+                ? { name: safeName, url: signed.signedUrl, folderPath: lib.folderPath }
+                : undefined,
+            },
+          ]);
+        } catch {
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: "Couldn't save that to your library, Sir. Try again?" },
+          ]);
+        }
+      } else if (data.action?.type === "fetch_from_library" && userId) {
+        const lookup = data.action.libraryFetch;
+        try {
+          const { id: folderId, found } = await resolveFolderId(userId, lookup.folderPath);
+          if (!found) {
+            setHistory((h) => [
+              ...h,
+              { role: "atlas", text: `I can't find a "${lookup.folderPath}" folder in your library, Sir.` },
+            ]);
+          } else {
+            const query = supabase
+              .from("library_files")
+              .select("name, storage_path")
+              .eq("user_id", userId)
+              .eq("name", lookup.filename);
+            const fileResult =
+              folderId === null
+                ? await query.is("folder_id", null).maybeSingle()
+                : await query.eq("folder_id", folderId).maybeSingle();
+            const fileRow = fileResult.data;
+
+            if (!fileRow) {
+              setHistory((h) => [
+                ...h,
+                { role: "atlas", text: `I can't find "${lookup.filename}" in there, Sir.` },
+              ]);
+            } else {
+              const { data: signed, error: signError } = await supabase.storage
+                .from(LIBRARY_BUCKET)
+                .createSignedUrl(fileRow.storage_path, LIBRARY_SIGNED_URL_TTL_SECONDS);
+              if (signError || !signed) throw signError ?? new Error("No signed URL");
+
+              setHistory((h) => [
+                ...h,
+                {
+                  role: "atlas",
+                  text: `Here it is, Sir.`,
+                  libraryFile: { name: fileRow.name, url: signed.signedUrl, folderPath: lookup.folderPath },
+                },
+              ]);
+            }
+          }
+        } catch {
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: "Couldn't pull that up from your library, Sir. Try again?" },
           ]);
         }
       }
@@ -349,9 +493,6 @@ export function AtlasWidget({ greeting }: Props) {
 
   return (
     <div className="w-full rounded-3xl border border-mist bg-ink p-5 text-white md:p-6">
-      {/* Scoped styles for the thin scrollbar and the thinking-dots animation.
-          Kept local to this component so no global CSS or new dependency
-          (e.g. framer-motion) is required. */}
       <style>{`
         .atlas-thin-scroll {
           scrollbar-width: thin;
@@ -396,11 +537,6 @@ export function AtlasWidget({ greeting }: Props) {
 
       <div className="mt-4 h-px w-full bg-white/10" />
 
-      {/* Chat history — iMessage-style bubbles: alignment and color carry
-          who's speaking, so there's no need for "You:"/"Atlas:" labels
-          cluttering every line. Slightly taller max-height than before
-          since bubbles take a bit more vertical room than plain text
-          lines did. */}
       {(history.length > 0 || sending) && (
         <ul className="atlas-thin-scroll mt-4 max-h-56 space-y-2 overflow-y-auto pr-1 md:max-h-40">
           {history.map((msg, i) => (
@@ -437,6 +573,20 @@ export function AtlasWidget({ greeting }: Props) {
                     }`}
                   >
                     ➤  {msg.file.name}
+                  </a>
+                )}
+                {msg.libraryFile && (
+                  <a
+                    href={msg.libraryFile.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`mt-1.5 flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      msg.role === "user"
+                        ? "border-ink/10 text-ink/70 hover:border-ink/20 hover:text-ink"
+                        : "border-white/15 text-white/80 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    🗀  {msg.libraryFile.name}
                   </a>
                 )}
               </div>
@@ -495,10 +645,6 @@ export function AtlasWidget({ greeting }: Props) {
         />
       )}
 
-      {/* Compose bar — iMessage-style full pill instead of a rounded
-          rectangle, and the mic button gets a guaranteed 44px tap target
-          on all sizes instead of just enough padding to look right on a
-          mouse. */}
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -6,6 +6,7 @@ import { TodoWidget } from "./widgets/TodoWidget";
 import { NotesWidget } from "./widgets/NotesWidget";
 import { GoalsWidget } from "./widgets/GoalsWidget";
 import { StudyPlannerWidget } from "./widgets/StudyPlannerWidget";
+import { LibraryWidget } from "./widgets/LibraryWidget";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -15,7 +16,7 @@ const EASE = [0.23, 1, 0.32, 1] as const;
 // CSS-driven layout (bottom bar vs. side rail) below.
 const MOBILE_BREAKPOINT = 768;
 
-type WidgetKey = "schedule" | "todo" | "notes" | "goals" | "planner";
+type WidgetKey = "schedule" | "todo" | "notes" | "goals" | "planner" | "library";
 type Course = { id: string; name: string };
 type Position = { x: number; y: number };
 type Size = { width: number; height: number };
@@ -30,6 +31,7 @@ const ITEMS: { key: WidgetKey; label: string; icon: ReactNode }[] = [
   { key: "notes", label: "Notes", icon: <PencilIcon /> },
   { key: "goals", label: "Goals", icon: <TargetIcon /> },
   { key: "planner", label: "Study planner", icon: <BookIcon /> },
+  { key: "library", label: "Library", icon: <LibraryIcon /> },
 ];
 
 const DEFAULT_SIZE: Size = { width: 380, height: 480 };
@@ -109,6 +111,7 @@ export function WidgetDock({ courses }: Props) {
         {active === "notes" && <NotesWidget />}
         {active === "goals" && <GoalsWidget />}
         {active === "planner" && <StudyPlannerWidget />}
+        {active === "library" && <LibraryWidget />}
       </>
     );
   }
@@ -188,7 +191,7 @@ export function WidgetDock({ courses }: Props) {
             }`}
           >
             <span className={active === item.key ? "text-ink" : "text-slate"}>{item.icon}</span>
-            <span className="text-[10px] font-medium leading-none">{item.label}</span>
+            <span className="px-0.5 text-center text-[10px] font-medium leading-tight">{item.label}</span>
           </button>
         ))}
       </div>
@@ -314,6 +317,14 @@ function BookIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
       <path d="M4 5.5c2-1 5-1 8 0v13c-3-1-6-1-8 0v-13z" strokeLinejoin="round" />
       <path d="M20 5.5c-2-1-5-1-8 0v13c3-1 6-1 8 0v-13z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LibraryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" strokeLinejoin="round" />
     </svg>
   );
 }

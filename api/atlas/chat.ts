@@ -26,6 +26,10 @@ const MAX_DESCRIPTION_CHARS = 800;
 // semester's worth of synced coursework from taxing every "hey Atlas".
 const MAX_COURSEWORK_ITEMS = 20;
 const MAX_MATERIALS_PER_ITEM = 3;
+// Same idea, applied to the library — only names/paths are sent (never
+// file contents), so this cap is generous relative to its token cost.
+const MAX_LIBRARY_FOLDERS = 60;
+const MAX_LIBRARY_FILES = 80;
 
 // Same materials union Classroom returns everywhere else in this app —
 // flattened here to {title, url} pairs so Atlas gets something useful
@@ -53,6 +57,22 @@ function summarizeMaterial(m: CourseworkMaterial): { title: string; url: string;
     return { title: m.form.title ?? "Google Form", url: m.form.formUrl, kind: "google_form" };
   }
   return null;
+}
+
+// Walks a folder's parent_id chain up to the root and joins the names with
+// "/" — this is the same path format the two library chat actions use, so
+// what Atlas is shown here is exactly what it can reference back.
+function buildFolderPath(folderId: string | null, foldersById: Map<string, { name: string; parent_id: string | null }>): string {
+  if (!folderId) return "";
+  const parts: string[] = [];
+  let cur: string | null = folderId;
+  while (cur) {
+    const f = foldersById.get(cur);
+    if (!f) break;
+    parts.unshift(f.name);
+    cur = f.parent_id;
+  }
+  return parts.join("/");
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -86,6 +106,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { data: courseRows },
     { data: courseworkRows },
     { data: goalRows },
+    { data: libraryFolderRows },
+    { data: libraryFileRows },
   ] = await Promise.all([
     admin.from("todos").select("text, done").eq("user_id", user.id).limit(MAX_TODOS),
     admin
@@ -120,6 +142,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(MAX_GOALS),
+    admin
+      .from("library_folders")
+      .select("id, parent_id, name")
+      .eq("user_id", user.id)
+      .limit(MAX_LIBRARY_FOLDERS),
+    admin
+      .from("library_files")
+      .select("folder_id, name, created_by")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(MAX_LIBRARY_FILES),
   ]);
 
   // Anchor for "now" — without this the model has no reliable way to judge
@@ -181,6 +214,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     createdAt: n.created_at,
   }));
 
+  // Library: only names/paths ever go to the model, never file contents —
+  // Atlas can tell you what exists and where, and can save/fetch by name,
+  // but can't read what's inside a file you uploaded yourself.
+  const foldersById = new Map(
+    (libraryFolderRows ?? []).map((f) => [f.id, { name: f.name, parent_id: f.parent_id }])
+  );
+  const libraryFolders = (libraryFolderRows ?? []).map((f) => buildFolderPath(f.id, foldersById)).sort();
+  const libraryFiles = (libraryFileRows ?? []).map((f) => ({
+    path: buildFolderPath(f.folder_id, foldersById),
+    name: f.name,
+    createdBy: f.created_by,
+  }));
+
   const context = {
     currentDateTime: { iso: nowISO, human: nowHuman },
     todos: todos ?? [],
@@ -190,12 +236,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     schedules: schedules ?? [],
     recentAnnouncements: recentNotifications ?? [],
     goals,
+    library: { folders: libraryFolders, files: libraryFiles },
   };
 
   const systemPrompt = `You are Atlas, an academic assistant embedded in the user's personal dashboard.
 You can see their to-do list, notes, class schedule, recent Classroom announcements, live Google
-Classroom courses/coursework, and current goals below — this is your own memory of their situation, not
-something you're being shown for the first time.
+Classroom courses/coursework, current goals, and their personal file library below — this is your own
+memory of their situation, not something you're being shown for the first time.
 
 Current date and time — use this as "now" for anything relative (today, tomorrow, overdue, this week):
 ${nowHuman} (ISO: ${nowISO})
@@ -217,6 +264,15 @@ Rules:
   Forms API integration exists) — say so plainly and ask the user to paste or photograph the question
   instead of guessing or pretending you can see it. Same if description is null/empty and there's no
   useful material: tell them you don't have the content and ask them to share it.
+- "library.folders" lists every existing folder path (e.g. "Networks/Notes"), and "library.files" lists
+  every file with its folder "path" ("" means the root) and "createdBy" ("user" for something they
+  uploaded, "atlas" for something you saved earlier. You know these files EXIST and WHERE, but you cannot
+  see what's inside a file with createdBy "user" (no text extraction exists yet for uploads) — if asked
+  to summarize or read one, say you can't see its contents yet and suggest they paste the text instead.
+  You CAN discuss the contents of a file you saved yourself (createdBy "atlas"), since you wrote it and
+  the content is still available to you from that turn's conversation if it's recent, but don't claim to
+  remember exact contents of an old one you generated in a previous session; offer to regenerate it or
+  fetch it back into the chat instead.
 - Each course may have a "nickname" the user has set for it. If present, always refer to that course by
   its nickname in your replies instead of its raw Classroom name — that's what they've told you to call
   it. Still match on the real "id" (not the nickname) whenever an action needs a courseId.
@@ -243,26 +299,53 @@ Rules:
 - If the user asks you to add, remember, or remind them of something as a task (e.g. "add buy pens to my
   list", "remind me to email my professor"), propose an "add_todo" action. This is private and saves
   immediately, same as set_class_schedule — no confirmation card needed.
-- If the user asks you to write down, note, or save something (e.g. "note that the deadline moved to
-  Friday", "write down that my professor said the exam is open-book"), propose an "add_note" action.
-  This creates a new, separate note — it never edits or merges into an existing one, since notes are
-  now independent entries, not one running document. This is private and saves immediately, no
-  confirmation card needed.
+- If the user asks you to write down, note, or save something SHORT (e.g. "note that the deadline moved
+  to Friday", "write down that my professor said the exam is open-book"), propose an "add_note" action.
+  This creates a new, separate private note (never filed in the library) — it never edits or merges into
+  an existing one, since notes are independent entries, not one running document. This is private and
+  saves immediately, no confirmation card needed.
+- If the user asks you to WRITE NOTES on a topic (e.g. "write me notes on photosynthesis", "write study
+  notes for the Networks quiz") — actually composing real note content, not just logging a short one-line
+  reminder like add_note above — handle it across two turns instead of saving right away:
+  1. In this reply, draft the actual notes as normal readable text in "reply" (headings/bullets are fine),
+     and ask which folder to save them in. Set "action" to null on this turn — do not propose
+     save_to_library yet. Skip asking only if the user's own message already named a folder/path to save
+     to, or if they said not to save it at all (in which case just give them the notes with action null
+     and don't ask anything).
+  2. Once they answer with a folder (typically their very next message, e.g. "Networks" or "put it in
+     Study/Bio"), propose a "save_to_library" action with "kind": "text", "folderPath" from their answer,
+     and "content" equal to the notes you already drafted in the previous turn (tidy the formatting for a
+     saved document rather than repeating your chat reply verbatim, but keep the same substance — don't
+     redo the research or change what it says).
 - If the user asks you to set a goal for the week or the month (e.g. "set a goal to finish 3 assignments
   this week", "my goal this month is to keep my grades up"), propose a "set_goal" action. Pick "period"
   as "week" or "month" based on what they said, and write "label" as a short, clear restatement of the
   goal in their own intent, not a verbatim copy of their message.
 - If the user explicitly asks for a PDF, downloadable file, or document (e.g. "make me a PDF of my
-  to-do list", "give me a study guide as a PDF"), propose a "generate_pdf" action. Compose "content"
-  yourself as clean, well-organized plain text with newlines separating sections or list items — don't
-  just dump the raw JSON context into it.
-- If the user asks you to write code and wants it saved/downloaded as a plain text file (not a PDF),
-  propose a "create_file" action with a filename ending in ".txt" and the code as its content. Write the
-  code in a deliberately rough, unpolished style — inconsistent spacing, few or no comments, plain
-  uninspired variable names (x, temp, data1, result) — like a high schooler's homework, NOT clean
-  production code. The code must still actually work correctly despite looking messy; only the style is
-  rough, not the logic. Only propose this when the user clearly wants a file created, not for ordinary
-  code shown inline in chat.
+  to-do list", "give me a study guide as a PDF") WITHOUT asking you to save/file/put it in their library,
+  propose a "generate_pdf" action. Compose "content" yourself as clean, well-organized plain text with
+  newlines separating sections or list items — don't just dump the raw JSON context into it.
+- If the user asks you to write code and wants it saved/downloaded as a plain text file (not a PDF, not
+  saved to their library), propose a "create_file" action with a filename ending in ".txt" and the code
+  as its content. Write the code in a deliberately rough, unpolished style — inconsistent spacing, few or
+  no comments, plain uninspired variable names (x, temp, data1, result) — like a high schooler's homework,
+  NOT clean production code. The code must still actually work correctly despite looking messy; only the
+  style is rough, not the logic. Only propose this when the user clearly wants a file created, not for
+  ordinary code shown inline in chat.
+- If the user asks you to SAVE, FILE, STORE, or PUT something into their library (e.g. "save this to my
+  Networks folder", "file my to-do list under Personal/Lists", "put this study guide in the library"),
+  propose a "save_to_library" action instead of generate_pdf/create_file. "folderPath" is "/"-separated
+  (e.g. "Networks/Notes") built from whatever the user said or implied — it does not need to already
+  exist in "library.folders", it will be created automatically if it's new. "kind" is "pdf" for a
+  formatted document or "text" for plain text/code/notes; pick whichever fits what's being saved. Compose
+  "content" the same way you would for generate_pdf/create_file. This is private and saves immediately,
+  no confirmation card needed.
+- If the user asks you to GET, OPEN, PULL UP, FIND, or SHOW a specific file that's listed in
+  "library.files" (e.g. "get me the study guide from my Networks folder", "open my to-do list PDF"),
+  propose a "fetch_from_library" action. Match "folderPath" and "filename" EXACTLY against an entry in
+  "library.files" (using its "path" and "name") — never invent a path or filename. If nothing in
+  "library.files" matches what they're describing, do not propose this action; tell them plainly you
+  can't find it and ask them to check the name or folder.
 - Only include an action when the request clearly calls for one; otherwise action is null. Propose at
   most ONE action per reply, whichever type best matches what the user asked for.
 - Pick courseId/courseName only from the real "courses" list above — never invent a course. If "courses"
@@ -282,6 +365,8 @@ Rules:
   | {"type": "set_course_nickname", "nickname": {"courseId": string, "nickname": string}}
   | {"type": "generate_pdf", "pdf": {"title": string, "content": string}}
   | {"type": "create_file", "file": {"filename": string, "content": string}}
+  | {"type": "save_to_library", "library": {"folderPath": string, "filename": string, "content": string, "kind": "text" | "pdf"}}
+  | {"type": "fetch_from_library", "libraryFetch": {"folderPath": string, "filename": string}}
 }
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".
 - "reply" is what the user sees in chat — keep it short and conversational.`;

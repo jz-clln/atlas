@@ -142,10 +142,11 @@ export function WidgetDock({ courses }: Props) {
     <>
       {/* Click-away layer. On mobile it doubles as the sheet's backdrop
           (dimmed), on desktop it stays invisible so it doesn't obscure the
-          other floating widgets. */}
+          other floating widgets. No backdrop-blur here on purpose — see the
+          note on the sheet below. */}
       {active && (
         <div
-          className={`fixed inset-0 z-40 ${isMobile ? "bg-ink/30 backdrop-blur-[2px]" : ""}`}
+          className={`fixed inset-0 z-40 ${isMobile ? "bg-ink/40" : ""}`}
           onClick={() => setActive(null)}
           aria-hidden="true"
         />
@@ -230,11 +231,19 @@ export function WidgetDock({ courses }: Props) {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ duration: 0.28, ease: EASE }}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-white/95 shadow-2xl backdrop-blur-md"
+            // No backdrop-blur here: blurring everything behind a sliding
+            // (transform-animated) element forces a re-sample on every
+            // frame of the animation, which is what was causing the frame
+            // drops on open. A solid background reads just as well and
+            // costs nothing per-frame.
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-white shadow-2xl"
             style={{
               // Clears the bottom nav bar (56px content + safe area) so the
               // sheet never sits underneath it.
               marginBottom: "calc(56px + env(safe-area-inset-bottom))",
+              // Compositing hint so the browser promotes this to its own
+              // layer up front instead of discovering it mid-animation.
+              willChange: "transform",
             }}
           >
             <div className="flex shrink-0 items-center gap-1.5 border-b border-mist px-4 py-3 text-sm font-medium text-charcoal">

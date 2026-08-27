@@ -18,6 +18,16 @@ const SpeechRecognitionCtor: typeof window.SpeechRecognition | undefined =
     ? window.SpeechRecognition ?? (window as any).webkitSpeechRecognition
     : undefined;
 
+// Android's mic is effectively single-consumer: if this component's own
+// getUserMedia() (used only for the orb's audio-reactive waveform) opens a
+// stream, Chrome/Android's built-in SpeechRecognition often can't get a
+// second concurrent capture and silently never receives any audio — the UI
+// sits on "Listening…" forever with nothing ever transcribed. Desktop
+// Chrome doesn't have this restriction, so the analyser-driven
+// visualization stays on there; Android trades that visual flourish for
+// voice input actually working.
+const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+
 export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Props) {
   const [listening, setListening] = useState(false);
   const [ttsSpeaking, setTtsSpeaking] = useState(false);
@@ -59,29 +69,34 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
       return;
     }
 
-    navigator.mediaDevices
-      .getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
-      .then((stream) => {
-        if (closedRef.current) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        const audioContext = new AudioContext();
-        audioContextRef.current = audioContext;
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.3;
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-        micRef.current = {
-          analyser,
-          dataArray: new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>,
-        };
-      })
-      .catch(() => {
-        setError("Couldn't access your microphone — check your browser's permission settings.");
-      });
+    // Skip on Android — see isAndroid comment above. Opening this stream
+    // there is what was blocking SpeechRecognition from ever receiving
+    // audio, which is the actual cause of "stuck on Listening forever."
+    if (!isAndroid) {
+      navigator.mediaDevices
+        .getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+        .then((stream) => {
+          if (closedRef.current) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          streamRef.current = stream;
+          const audioContext = new AudioContext();
+          audioContextRef.current = audioContext;
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.3;
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          micRef.current = {
+            analyser,
+            dataArray: new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>,
+          };
+        })
+        .catch(() => {
+          setError("Couldn't access your microphone — check your browser's permission settings.");
+        });
+    }
 
     const recognition = new SpeechRecognitionCtor();
     recognition.continuous = false;
@@ -105,7 +120,15 @@ export function VoiceModeOverlay({ history, sending, sendMessage, onClose }: Pro
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === "no-speech" || event.error === "aborted") return;
+      if (event.error === "aborted") return;
+      if (event.error === "no-speech") {
+        // Session timed out without picking up any audio. Previously this
+        // just returned and left the UI stuck showing "Listening…" with no
+        // way forward except closing the overlay — retry automatically
+        // instead, same as after a normal reply finishes.
+        if (!closedRef.current) startListening();
+        return;
+      }
       setError(`Voice recognition error: ${event.error}`);
       setListening(false);
     };

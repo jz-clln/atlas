@@ -67,7 +67,7 @@ export function NotesWidget() {
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Jot something down…"
+          placeholder="Write something down…"
           disabled={!userId}
           rows={2}
           className="w-full resize-none rounded-xl border border-mist bg-cloud px-3 py-2 text-sm text-charcoal outline-none focus:border-charcoal disabled:opacity-50"

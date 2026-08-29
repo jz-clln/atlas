@@ -177,26 +177,30 @@ export function WidgetDock({ courses }: Props) {
         ))}
       </div>
 
-      {/* Mobile bottom nav — icon + label, safe-area aware, thumb-friendly */}
-      <div
-        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-mist bg-white/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {ITEMS.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => toggle(item.key)}
-            aria-label={item.label}
-            aria-pressed={active === item.key}
-            className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 transition-colors ${
-              active === item.key ? "text-ink" : "text-slate"
-            }`}
-          >
-            <span className={active === item.key ? "text-ink" : "text-slate"}>{item.icon}</span>
-            <span className="px-0.5 text-center text-[10px] font-medium leading-tight">{item.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Mobile bottom nav — icon + label, safe-area aware, thumb-friendly.
+          Hidden while a sheet is open on mobile so the open widget gets the
+          full screen instead of sharing it with a nav bar underneath. */}
+      {!(isMobile && active) && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-mist bg-white/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          {ITEMS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => toggle(item.key)}
+              aria-label={item.label}
+              aria-pressed={active === item.key}
+              className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 transition-colors ${
+                active === item.key ? "text-ink" : "text-slate"
+              }`}
+            >
+              <span className={active === item.key ? "text-ink" : "text-slate"}>{item.icon}</span>
+              <span className="px-0.5 text-center text-[10px] font-medium leading-tight">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* The popup: draggable/resizable window on desktop, bottom sheet on mobile */}
       <AnimatePresence>
@@ -243,9 +247,10 @@ export function WidgetDock({ courses }: Props) {
             // costs nothing per-frame.
             className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-white shadow-2xl"
             style={{
-              // Clears the bottom nav bar (56px content + safe area) so the
-              // sheet never sits underneath it.
-              marginBottom: "calc(56px + env(safe-area-inset-bottom))",
+              // The nav bar it used to clear is now hidden while this is
+              // open (see above), so the sheet only needs to clear the
+              // safe-area inset itself, not an extra 56px for the nav.
+              marginBottom: "env(safe-area-inset-bottom)",
               // Compositing hint so the browser promotes this to its own
               // layer up front instead of discovering it mid-animation.
               willChange: "transform",

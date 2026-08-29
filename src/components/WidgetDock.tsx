@@ -123,6 +123,7 @@ export function WidgetDock({ courses }: Props) {
         <div className="flex items-center gap-1">
           <button
             onClick={resetActiveWidget}
+            onPointerDown={(e) => e.stopPropagation()}
             aria-label="Reset position and size"
             title="Reset position and size"
             className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
@@ -131,6 +132,7 @@ export function WidgetDock({ courses }: Props) {
           </button>
           <button
             onClick={() => setActive(null)}
+            onPointerDown={(e) => e.stopPropagation()}
             aria-label="Close"
             className="flex h-5 w-5 items-center justify-center rounded-full text-slate hover:bg-cloud hover:text-charcoal"
           >
@@ -175,13 +177,9 @@ export function WidgetDock({ courses }: Props) {
         ))}
       </div>
 
-      {/* Mobile bottom nav — icon + label, safe-area aware, thumb-friendly.
-          Hidden while a widget sheet is open (`active` is set) so the sheet
-          owns the full bottom edge instead of sharing it with the nav. */}
+      {/* Mobile bottom nav — icon + label, safe-area aware, thumb-friendly */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-50 items-stretch justify-around border-t border-mist bg-white/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden ${
-          active ? "hidden" : "flex"
-        }`}
+        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-mist bg-white/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md md:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {ITEMS.map((item) => (
@@ -245,10 +243,9 @@ export function WidgetDock({ courses }: Props) {
             // costs nothing per-frame.
             className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-white shadow-2xl"
             style={{
-              // No bottom nav to clear anymore — it's hidden while this
-              // sheet is open — so the sheet can sit flush with the true
-              // bottom edge. Its own inner padding below still respects
-              // the safe-area inset.
+              // Clears the bottom nav bar (56px content + safe area) so the
+              // sheet never sits underneath it.
+              marginBottom: "calc(56px + env(safe-area-inset-bottom))",
               // Compositing hint so the browser promotes this to its own
               // layer up front instead of discovering it mid-animation.
               willChange: "transform",

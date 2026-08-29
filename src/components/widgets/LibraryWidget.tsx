@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSession } from "../../lib/useSession";
 
@@ -42,6 +42,7 @@ export function LibraryWidget() {
   const [newFolderName, setNewFolderName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -291,114 +292,146 @@ export function LibraryWidget() {
 
       {error && <p className="mt-2 text-xs text-slate">{error}</p>}
 
-      {/* Listing */}
-      <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
+      {/* Listing — icon grid, matching how a native file browser lays out
+          folders/files (icon above, name below) instead of a text list. */}
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto" onClick={() => setMenuFor(null)}>
         {loading ? (
           <p className="text-sm text-slate">Loading…</p>
         ) : childFolders.length === 0 && childFiles.length === 0 ? (
           <p className="text-sm text-slate">Empty. Create a folder or upload something.</p>
         ) : (
-          <>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-x-2 gap-y-4">
             {childFolders.map((folder) => (
-              <div
+              <GridTile
                 key={folder.id}
-                className="group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-cloud"
-              >
-                <FolderIcon />
-                {renamingId === `folder:${folder.id}` ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => e.key === "Enter" && commitRename()}
-                    className="min-w-0 flex-1 rounded-md border border-mist px-1.5 py-0.5 text-sm outline-none focus:border-ink"
-                  />
-                ) : (
-                  <button
-                    onClick={() => setCurrentFolderId(folder.id)}
-                    className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink"
-                  >
-                    {folder.name}
-                  </button>
-                )}
-                <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <IconButton
-                    label="Rename folder"
-                    onClick={() => startRename("folder", folder.id, folder.name)}
-                  >
-                    <PencilIcon />
-                  </IconButton>
-                  <IconButton label="Delete folder" onClick={() => deleteFolder(folder)}>
-                    <TrashIcon />
-                  </IconButton>
-                </div>
-              </div>
+                name={folder.name}
+                icon={<FolderTileIcon />}
+                renaming={renamingId === `folder:${folder.id}`}
+                renameValue={renameValue}
+                onRenameChange={setRenameValue}
+                onCommitRename={commitRename}
+                menuOpen={menuFor === `folder:${folder.id}`}
+                onToggleMenu={() =>
+                  setMenuFor((prev) => (prev === `folder:${folder.id}` ? null : `folder:${folder.id}`))
+                }
+                onOpen={() => setCurrentFolderId(folder.id)}
+                onRename={() => {
+                  setMenuFor(null);
+                  startRename("folder", folder.id, folder.name);
+                }}
+                onDelete={() => {
+                  setMenuFor(null);
+                  deleteFolder(folder);
+                }}
+              />
             ))}
 
             {childFiles.map((file) => (
-              <div
+              <GridTile
                 key={file.id}
-                className="group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-cloud"
-              >
-                <FileIcon />
-                {renamingId === `file:${file.id}` ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => e.key === "Enter" && commitRename()}
-                    className="min-w-0 flex-1 rounded-md border border-mist px-1.5 py-0.5 text-sm outline-none focus:border-ink"
-                  />
-                ) : (
-                  <button
-                    onClick={() => downloadFile(file)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
-                    <span className="min-w-0 truncate text-sm text-ink">{file.name}</span>
-                    {file.created_by === "atlas" && (
-                      <span className="shrink-0 rounded-full bg-cloud px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate">
-                        Atlas
-                      </span>
-                    )}
-                    <span className="shrink-0 text-[11px] text-slate">{formatSize(file.size_bytes)}</span>
-                  </button>
-                )}
-                <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <IconButton label="Rename file" onClick={() => startRename("file", file.id, file.name)}>
-                    <PencilIcon />
-                  </IconButton>
-                  <IconButton label="Delete file" onClick={() => deleteFile(file)}>
-                    <TrashIcon />
-                  </IconButton>
-                </div>
-              </div>
+                name={file.name}
+                caption={file.created_by === "atlas" ? "Atlas" : formatSize(file.size_bytes)}
+                icon={<FileTileIcon />}
+                renaming={renamingId === `file:${file.id}`}
+                renameValue={renameValue}
+                onRenameChange={setRenameValue}
+                onCommitRename={commitRename}
+                menuOpen={menuFor === `file:${file.id}`}
+                onToggleMenu={() =>
+                  setMenuFor((prev) => (prev === `file:${file.id}` ? null : `file:${file.id}`))
+                }
+                onOpen={() => downloadFile(file)}
+                onRename={() => {
+                  setMenuFor(null);
+                  startRename("file", file.id, file.name);
+                }}
+                onDelete={() => {
+                  setMenuFor(null);
+                  deleteFile(file);
+                }}
+              />
             ))}
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function IconButton({
-  label,
-  onClick,
-  children,
+function GridTile({
+  name,
+  caption,
+  icon,
+  renaming,
+  renameValue,
+  onRenameChange,
+  onCommitRename,
+  menuOpen,
+  onToggleMenu,
+  onOpen,
+  onRename,
+  onDelete,
 }: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
+  name: string;
+  caption?: string;
+  icon: ReactNode;
+  renaming: boolean;
+  renameValue: string;
+  onRenameChange: (v: string) => void;
+  onCommitRename: () => void;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      className="flex h-7 w-7 items-center justify-center rounded-full text-slate hover:bg-white hover:text-charcoal"
-    >
-      {children}
-    </button>
+    <div className="group relative flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={onToggleMenu}
+        aria-label={`Options for ${name}`}
+        className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate opacity-0 shadow-sm ring-1 ring-mist transition-opacity hover:text-charcoal group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        <DotsIcon />
+      </button>
+
+      {menuOpen && (
+        <div className="absolute right-0 top-6 z-20 w-28 overflow-hidden rounded-xl border border-mist bg-white py-1 shadow-lg">
+          <button
+            onClick={onRename}
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-charcoal hover:bg-cloud"
+          >
+            <PencilIcon /> Rename
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-charcoal hover:bg-cloud"
+          >
+            <TrashIcon /> Delete
+          </button>
+        </div>
+      )}
+
+      <button onClick={onOpen} className="flex flex-col items-center gap-1.5 pt-1">
+        {icon}
+        {renaming ? (
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => onRenameChange(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={onCommitRename}
+            onKeyDown={(e) => e.key === "Enter" && onCommitRename()}
+            className="w-full rounded-md border border-mist px-1 py-0.5 text-center text-[11px] outline-none focus:border-ink"
+          />
+        ) : (
+          <span className="line-clamp-2 max-w-[76px] text-center text-[11px] font-medium leading-tight text-ink">
+            {name}
+          </span>
+        )}
+        {caption && <span className="text-[9px] text-slate">{caption}</span>}
+      </button>
+    </div>
   );
 }
 
@@ -420,19 +453,43 @@ function UploadIcon() {
   );
 }
 
-function FolderIcon() {
+function FolderTileIcon() {
+  // Filled, two-tone folder shape (icon-grid tile size) kept in the app's
+  // existing neutral ink/mist palette rather than a skeuomorphic yellow, so
+  // it still reads as "Atlas" rather than a generic OS file browser.
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-slate">
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" strokeLinejoin="round" />
+    <svg viewBox="0 0 48 40" className="h-10 w-12 shrink-0" aria-hidden="true">
+      <path
+        d="M3 8a3 3 0 0 1 3-3h11l4 4h21a3 3 0 0 1 3 3v21a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V8z"
+        fill="#eceef2"
+        stroke="#d9dbe1"
+        strokeWidth="1"
+      />
+      <path d="M3 13h42v19a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V13z" fill="#f6f7f9" stroke="#e6e6e9" strokeWidth="1" />
     </svg>
   );
 }
 
-function FileIcon() {
+function FileTileIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-slate">
-      <path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" strokeLinejoin="round" />
-      <path d="M14 3v4h4" strokeLinejoin="round" />
+    <svg viewBox="0 0 40 48" className="h-10 w-9 shrink-0" aria-hidden="true">
+      <path
+        d="M5 3h20l10 10v32a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+        fill="#ffffff"
+        stroke="#d9dbe1"
+        strokeWidth="1.25"
+      />
+      <path d="M25 3v8a2 2 0 0 0 2 2h8" fill="none" stroke="#d9dbe1" strokeWidth="1.25" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
     </svg>
   );
 }

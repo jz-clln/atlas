@@ -28,13 +28,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ).toISOString();
 
     if (provider_refresh_token) {
-      const { error } = await admin.from("google_tokens").upsert({
-        user_id: user.id,
-        access_token: provider_token,
-        refresh_token: provider_refresh_token,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      });
+      // onConflict: "user_id" was missing here — without it, upsert()
+      // matches on the table's primary key by default, which isn't
+      // user_id, so this was silently INSERTing (or failing to insert,
+      // depending on schema) instead of UPDATing the existing row on every
+      // re-login. That left a stale, already-broken refresh_token in place
+      // permanently, which is what was actually producing the recurring
+      // unauthorized_client error downstream in getValidAccessToken.
+      const { error } = await admin.from("google_tokens").upsert(
+        {
+          user_id: user.id,
+          access_token: provider_token,
+          refresh_token: provider_refresh_token,
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
       if (error) return res.status(500).json({ error: error.message });
     } else {
       const { error } = await admin

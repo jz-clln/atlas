@@ -6,6 +6,11 @@ import { SubmitWorkCard } from "./SubmitWorkCard";
 
 const EASE_OUT_QUINT: [number, number, number, number] = [0.23, 1, 0.32, 1];
 
+// Work types that Atlas currently knows how to submit for. Anything else
+// (e.g. MULTIPLE_CHOICE_QUESTION) still shows in the sheet but with no
+// submit card, same as before — out of scope until that type comes up.
+const SUBMITTABLE_WORK_TYPES = new Set(["ASSIGNMENT", "SHORT_ANSWER_QUESTION"]);
+
 type Props = {
   item: CourseworkItem | null;
   courseName: string;
@@ -121,10 +126,11 @@ export function TaskDetailSheet({ item, courseName, onClose }: Props) {
               </div>
             )}
 
-            {shown.work_type === "ASSIGNMENT" && (
+            {shown.work_type && SUBMITTABLE_WORK_TYPES.has(shown.work_type) && (
               <SubmitWorkCard
                 courseId={shown.course_id}
                 courseWorkId={shown.id}
+                workType={shown.work_type}
                 submissionState={shown.submission_state}
                 onSubmitted={() => {
                   // Best-effort refresh so materials/state reflect the new

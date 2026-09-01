@@ -153,7 +153,9 @@ export function AtlasWidget({ greeting }: Props) {
 
     supabase
       .from("pending_submissions")
-      .select("course_id, course_name, course_work_id, task_title, mode, text_answer")
+      // NOTE: this requires a `work_type` column on pending_submissions —
+      // see the flag below about the table/migration.
+      .select("course_id, course_name, course_work_id, task_title, work_type, mode, text_answer")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
@@ -163,6 +165,7 @@ export function AtlasWidget({ greeting }: Props) {
           courseName: data.course_name,
           courseWorkId: data.course_work_id,
           taskTitle: data.task_title,
+          workType: data.work_type ?? null,
           mode: data.mode as "text" | "file",
           textAnswer: data.text_answer ?? undefined,
         });
@@ -222,6 +225,9 @@ export function AtlasWidget({ greeting }: Props) {
       if (data.action?.type === "create_classroom_task") {
         setPendingTask(data.action.task);
       } else if (data.action?.type === "submit_classroom_work") {
+        // NOTE: this trusts /api/atlas/chat to include workType on the
+        // submission object it returns — see the flag below, that endpoint
+        // needs to be checked/updated too so this isn't silently undefined.
         const s = data.action.submission;
         setPendingSubmission(s);
         if (userId) {
@@ -231,6 +237,7 @@ export function AtlasWidget({ greeting }: Props) {
             course_name: s.courseName,
             course_work_id: s.courseWorkId,
             task_title: s.taskTitle,
+            work_type: s.workType ?? null,
             mode: s.mode,
             text_answer: s.textAnswer ?? null,
           });

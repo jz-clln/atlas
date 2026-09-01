@@ -195,6 +195,8 @@ export async function fetchAnnouncements(
 // Fetches full detail for a single task — used for on-demand "explain this
 // assignment" lookups from the assistant chat (Phase 3), so we don't have to
 // wait for a full sync to get the latest description/materials for one item.
+// Also doubles as the source of truth for workType when submitting
+// (see api/classroom/submit-task.ts), instead of trusting the client.
 export async function fetchCourseWorkDetail(
   courseId: string,
   courseWorkId: string,
@@ -299,6 +301,8 @@ export async function fetchStudentSubmission(
 // Uploads a file to the student's Drive using the drive.file scope — the app
 // can only ever see files it creates itself, never the rest of the user's
 // Drive. This is intentionally the least-privileged scope that still works.
+// Called once per file when submitting more than one attachment — see
+// uploadFilesToDrive below.
 export async function uploadFileToDrive(
   accessToken: string,
   fileName: string,
@@ -338,11 +342,40 @@ export async function uploadFileToDrive(
   return res.json();
 }
 
-export async function attachDriveFileToSubmission(
+// Uploads several files one after another and returns all their Drive file
+// ids, in the same order they were given. Uploads are sequential rather than
+// parallel (Promise.all) on purpose — Drive's upload endpoint is more prone
+// to transient errors under concurrent load from a single user, and a
+// submission with 2-4 photos doesn't need the speed badly enough to risk
+// that. If one upload fails partway through, the ones already uploaded to
+// Drive are simply never attached to the submission — they don't count
+// against the student, and re-submitting just uploads fresh copies.
+export async function uploadFilesToDrive(
+  accessToken: string,
+  files: { fileName: string; mimeType: string; base64Data: string }[]
+): Promise<{ id: string }[]> {
+  const uploaded: { id: string }[] = [];
+  for (const file of files) {
+    const result = await uploadFileToDrive(
+      accessToken,
+      file.fileName,
+      file.mimeType,
+      file.base64Data
+    );
+    uploaded.push(result);
+  }
+  return uploaded;
+}
+
+// Attaches one or more already-uploaded Drive files to a submission in a
+// single Classroom API call. Classroom's modifyAttachments endpoint accepts
+// an array natively, so multiple files are one request either way — this
+// replaces the old single-file-only version of this function.
+export async function attachDriveFilesToSubmission(
   courseId: string,
   courseWorkId: string,
   submissionId: string,
-  driveFileId: string,
+  driveFileIds: string[],
   accessToken: string
 ): Promise<void> {
   const res = await fetch(
@@ -354,7 +387,7 @@ export async function attachDriveFileToSubmission(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        addAttachments: [{ driveFile: { id: driveFileId } }],
+        addAttachments: driveFileIds.map((id) => ({ driveFile: { id } })),
       }),
     }
   );
@@ -386,8 +419,9 @@ export async function turnInSubmission(
 // Turns plain typed text into a real Google Doc, using Drive's on-upload
 // conversion (source text/plain -> target application/vnd.google-apps.document).
 // This is how a "text answer" becomes something Classroom can attach to a
-// submission, since ASSIGNMENT-type work only accepts file/link/video
-// attachments — there's no bare-text submission field to write to directly.
+// submission, for ASSIGNMENT-type work — that type only accepts file/link/video
+// attachments; there's no bare-text submission field to write to directly.
+// NOT used for SHORT_ANSWER_QUESTION type — see submitShortAnswer below.
 export async function createGoogleDocFromText(
   accessToken: string,
   title: string,
@@ -426,6 +460,36 @@ export async function createGoogleDocFromText(
   }
 
   return res.json();
+}
+
+// Writes directly to the short-answer field on a submission. This is the
+// REAL submission path for SHORT_ANSWER_QUESTION coursework — Classroom
+// gives that work type its own answer field, so there's no file, no Drive
+// upload, and no Google Doc conversion involved at all. This only works
+// for SHORT_ANSWER_QUESTION; ASSIGNMENT-type work has no such field, which
+// is why that type still goes through createGoogleDocFromText above.
+export async function submitShortAnswer(
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  answer: string,
+  accessToken: string
+): Promise<void> {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}?updateMask=shortAnswerSubmission.answer`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ shortAnswerSubmission: { answer } }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Short-answer submit failed (${res.status}): ${body}`);
+  }
 }
 
 // Lets the student pull a submission back out of "turned in" state — the

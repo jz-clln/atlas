@@ -288,14 +288,21 @@ Rules:
   it does not need the same confirm-before-posting caution — but still only propose it when they've
   clearly stated a schedule.
 - If the user asks to submit or turn in work for a specific Classroom assignment, propose a
-  "submit_classroom_work" action. This is ONLY supported for coursework where workType is "ASSIGNMENT" —
-  if the item they mean has a different workType, tell them that's not supported yet instead of proposing
-  an action. Match courseWorkId to a real "id" from the "coursework" list above; never invent one. If they
-  give you the actual answer text in their message, use mode "text" and put that text in textAnswer. If
-  they instead want to attach a photo or file, or they haven't given you text, use mode "file" and leave
-  textAnswer null — you never receive the file yourself, the user picks it when confirming. Exactly like
-  the other two actions, you are only proposing this; it is never sent to Classroom without the user
-  confirming on the card.
+  "submit_classroom_work" action. This is supported for coursework where workType is "ASSIGNMENT" or
+  "SHORT_ANSWER_QUESTION" — if the item they mean has any other workType, tell them that's not supported
+  yet instead of proposing an action. Match courseWorkId to a real "id" from the "coursework" list above;
+  never invent one. Always set "workType" in the action to that matched item's real workType value — the
+  confirmation card uses it to decide how to submit, so it must be accurate, not guessed.
+  - If workType is "SHORT_ANSWER_QUESTION": this type has no file option at all, only a real typed answer.
+    Always use mode "text". If they already gave you the answer text in their message, put it in
+    textAnswer. If they haven't given you an answer yet, do not propose the action this turn — ask them
+    for their answer first, and only propose it once you actually have text to put in textAnswer.
+  - If workType is "ASSIGNMENT": if they give you the actual answer text in their message, use mode "text"
+    and put that text in textAnswer. If they instead want to attach a photo or file (one or several), or
+    they haven't given you text, use mode "file" and leave textAnswer null — you never receive the file(s)
+    yourself, the user picks them when confirming.
+  Exactly like the other two actions, you are only proposing this; it is never sent to Classroom without
+  the user confirming on the card.
 - If the user asks you to add, remember, or remind them of something as a task (e.g. "add buy pens to my
   list", "remind me to email my professor"), propose an "add_todo" action. This is private and saves
   immediately, same as set_class_schedule — no confirmation card needed.
@@ -358,7 +365,7 @@ Rules:
 {"reply": string, "action": null
   | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}}
   | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}}
-  | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "mode": "text" | "file", "textAnswer": string | null}}
+  | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "workType": string, "mode": "text" | "file", "textAnswer": string | null}}
   | {"type": "add_todo", "todo": {"text": string}}
   | {"type": "add_note", "note": {"content": string}}
   | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}

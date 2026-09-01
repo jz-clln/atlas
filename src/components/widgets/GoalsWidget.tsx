@@ -60,7 +60,7 @@ export function GoalsWidget() {
         <p className="text-sm text-slate">Loading…</p>
       ) : goals.length === 0 ? (
         <p className="text-sm text-slate">
-          No goals yet."
+          No goals yet.
         </p>
       ) : (
         <ul className="space-y-3">

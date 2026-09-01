@@ -154,7 +154,32 @@ export function LibraryWidget() {
       setError("Couldn't open that file.");
       return;
     }
-    window.open(data.signedUrl, "_blank", "noopener");
+
+    // A plain link to the signed URL just opens most file types inline in a
+    // new tab (a .txt or .pdf renders instead of downloading) — the browser
+    // decides based on content type, not on our intent. Fetching the actual
+    // bytes and handing them to the browser as a local blob forces a real
+    // "Save As" download with the file's real name every time, regardless
+    // of content type.
+    try {
+      const res = await fetch(data.signedUrl);
+      if (!res.ok) throw new Error(`Download fetch failed (${res.status})`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Fallback for the rare case the fetch itself fails (e.g. a CORS
+      // quirk on the storage bucket) — at least still gets them the file,
+      // just without forcing the download.
+      window.open(data.signedUrl, "_blank", "noopener");
+    }
   }
 
   // Recursively collects every descendant folder id (including the one

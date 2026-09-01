@@ -5,6 +5,7 @@ type Props = {
   courseWorkId: string;
   workType: string | null;
   submissionState: string | null;
+  alternateLink: string | null;
   onSubmitted: () => void;
 };
 
@@ -62,11 +63,31 @@ function fileToBase64(blob: Blob): Promise<string> {
   });
 }
 
+// Shown under an error so the student isn't stuck — points them at
+// Classroom's own page for this assignment to submit manually, since the
+// API path can be blocked entirely by a school's Workspace admin policy
+// (see PERMISSION_DENIED / "Developer Console project is not permitted"),
+// which no amount of retrying or client-side fixing gets around.
+function ManualFallback({ alternateLink }: { alternateLink: string | null }) {
+  if (!alternateLink) return null;
+  return (
+    <a
+      href={alternateLink}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-2 block w-full rounded-xl border border-mist py-2.5 text-center text-sm font-medium text-charcoal transition-colors active:bg-cloud"
+    >
+      Open in Classroom to submit manually
+    </a>
+  );
+}
+
 export function SubmitWorkCard({
   courseId,
   courseWorkId,
   workType,
   submissionState,
+  alternateLink,
   onSubmitted,
 }: Props) {
   const isShortAnswer = workType === "SHORT_ANSWER_QUESTION";
@@ -255,7 +276,10 @@ export function SubmitWorkCard({
         </button>
 
         {status === "error" && errorMsg && (
-          <p className="mt-2 text-xs text-red-600">{errorMsg}</p>
+          <>
+            <p className="mt-2 text-xs text-red-600">{errorMsg}</p>
+            <ManualFallback alternateLink={alternateLink} />
+          </>
         )}
       </div>
     );
@@ -398,7 +422,10 @@ export function SubmitWorkCard({
       )}
 
       {status === "error" && errorMsg && (
-        <p className="mt-2 text-xs text-red-600">{errorMsg}</p>
+        <>
+          <p className="mt-2 text-xs text-red-600">{errorMsg}</p>
+          <ManualFallback alternateLink={alternateLink} />
+        </>
       )}
     </div>
   );

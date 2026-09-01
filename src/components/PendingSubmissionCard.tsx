@@ -6,6 +6,7 @@ export type PendingSubmission = {
   courseWorkId: string;
   taskTitle: string;
   workType: string | null;
+  alternateLink: string | null;
   mode: "text" | "file";
   textAnswer?: string;
 };
@@ -58,6 +59,24 @@ function fileToBase64(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+// Same fallback as SubmitWorkCard: if the automatic submission fails (most
+// notably a school Workspace admin blocking third-party API access, which
+// no retry or client-side fix gets around), point the student at
+// Classroom's own page for this assignment instead of leaving them stuck.
+function ManualFallback({ alternateLink }: { alternateLink: string | null }) {
+  if (!alternateLink) return null;
+  return (
+    <a
+      href={alternateLink}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-2 block w-full rounded-lg border border-white/20 py-2 text-center text-xs font-medium text-white/70 transition-colors active:bg-white/5"
+    >
+      Open in Classroom to submit manually
+    </a>
+  );
 }
 
 // Confirmation card for Atlas-proposed Classroom submissions — same
@@ -224,7 +243,12 @@ export function PendingSubmissionCard({ submission, onDone, onCancel }: Props) {
         </div>
       )}
 
-      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+      {error && (
+        <>
+          <p className="mt-2 text-xs text-red-300">{error}</p>
+          <ManualFallback alternateLink={submission.alternateLink} />
+        </>
+      )}
 
       <div className="mt-3 flex gap-2">
         <button

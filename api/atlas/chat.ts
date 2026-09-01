@@ -134,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     admin.from("courses").select("id, name, nickname").eq("user_id", user.id),
     admin
       .from("coursework")
-      .select("id, course_id, title, due_at, work_type, is_done, description, materials")
+      .select("id, course_id, title, due_at, work_type, is_done, description, materials, alternate_link")
       .eq("user_id", user.id),
     admin
       .from("goals")
@@ -187,6 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     title: cw.title,
     dueAt: cw.due_at,
     workType: cw.work_type ?? undefined,
+    alternateLink: cw.alternate_link ?? null,
     isDone: cw.is_done,
     // Precomputed server-side rather than left for the model to work out
     // from raw timestamps — cheaper, and removes an entire class of "Atlas
@@ -292,7 +293,10 @@ Rules:
   "SHORT_ANSWER_QUESTION" — if the item they mean has any other workType, tell them that's not supported
   yet instead of proposing an action. Match courseWorkId to a real "id" from the "coursework" list above;
   never invent one. Always set "workType" in the action to that matched item's real workType value — the
-  confirmation card uses it to decide how to submit, so it must be accurate, not guessed.
+  confirmation card uses it to decide how to submit, so it must be accurate, not guessed. Always also set
+  "alternateLink" to that matched item's real alternateLink value (its actual Classroom URL) — the
+  confirmation card uses this to offer a manual "open in Classroom" fallback if the automatic submission
+  fails, so it must be the real value from the coursework list, never invented or left as a guess.
   - If workType is "SHORT_ANSWER_QUESTION": this type has no file option at all, only a real typed answer.
     Always use mode "text". If they already gave you the answer text in their message, put it in
     textAnswer. If they haven't given you an answer yet, do not propose the action this turn — ask them
@@ -365,7 +369,7 @@ Rules:
 {"reply": string, "action": null
   | {"type": "create_classroom_task", "task": {"courseId": string, "courseName": string, "title": string, "description": string, "dueDate": string | null}}
   | {"type": "set_class_schedule", "schedule": {"courseId": string, "courseName": string, "daysOfWeek": number[], "startTime": string, "endTime": string}}
-  | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "workType": string, "mode": "text" | "file", "textAnswer": string | null}}
+  | {"type": "submit_classroom_work", "submission": {"courseId": string, "courseName": string, "courseWorkId": string, "taskTitle": string, "workType": string, "alternateLink": string | null, "mode": "text" | "file", "textAnswer": string | null}}
   | {"type": "add_todo", "todo": {"text": string}}
   | {"type": "add_note", "note": {"content": string}}
   | {"type": "set_goal", "goal": {"label": string, "period": "week" | "month"}}

@@ -132,6 +132,7 @@ export function TaskDetailSheet({ item, courseName, onClose }: Props) {
                 courseWorkId={shown.id}
                 workType={shown.work_type}
                 submissionState={shown.submission_state}
+                alternateLink={shown.alternate_link}
                 onSubmitted={() => {
                   // Best-effort refresh so materials/state reflect the new
                   // submission next time this sheet reopens; the card above

@@ -111,14 +111,22 @@ export function LibraryWidget() {
 
     for (const file of Array.from(fileList)) {
       const id = crypto.randomUUID();
-      const safeName = file.name.replace(/[/\\]/g, "-");
+      // Was only stripping slashes — a filename like "[Template] main.cpp"
+      // still reached Storage with brackets and a space in the object key,
+      // which is what actually caused the "[Template] main.cpp" upload to
+      // fail while a plain name like "Array.h" went through fine. Replacing
+      // anything outside letters/digits/dot/dash/underscore keeps the key
+      // safe for any file type, while the original name (with brackets and
+      // all) is still preserved as-is in the `name` column below — this
+      // only changes the internal storage path, not what you see or search by.
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `${userId}/${id}-${safeName}`;
 
       const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
         contentType: file.type || "application/octet-stream",
       });
       if (uploadError) {
-        setError(`Couldn't upload ${file.name}.`);
+        setError(`Couldn't upload ${file.name}: ${uploadError.message}`);
         continue;
       }
 

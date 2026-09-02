@@ -114,7 +114,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 Always address the user as "Sir" in your replies. Never use em dashes (—) — write in plain, natural
 spoken language, like a normal assistant talking to someone, not like a written essay.
 The user's message below already contains everything you need: some file content they asked you to
-read, and what they originally wanted from it. Just answer directly and helpfully using that content.
+read, and what they originally wanted from it.
+Keep your reply SHORT — a brief, high-level summary, not a full walkthrough. A few sentences or a short
+list of the main points is enough (e.g. what the file/activity is asking for, and the one or two things
+most worth fixing or knowing). Do NOT paste large code blocks, rewrite the whole file, or list every
+function one by one — only include a short code snippet if the user's original question specifically
+asked for actual code. If there's more you could offer (full corrected code, a complete rewrite, going
+through every function), say briefly that you can do that if they want it, instead of giving it all
+up front unasked.
 Respond with STRICT JSON only, no prose outside it, in exactly this shape: {"reply": string}`;
 
     const lightweightMessages = [
@@ -134,10 +141,10 @@ Respond with STRICT JSON only, no prose outside it, in exactly this shape: {"rep
       },
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        // Lower than the normal MAX_TOKENS on purpose — this path never
-        // needs to emit a generated PDF/file's worth of content, just a
-        // conversational answer about a file that's already been read.
-        max_completion_tokens: 1200,
+        // Lower than the normal MAX_TOKENS on purpose, and lower than this
+        // path's earlier cap of 1200 — this now enforces a short summary
+        // instead of a full walkthrough, so it shouldn't need much room.
+        max_completion_tokens: 600,
         messages: lightweightMessages,
         response_format: { type: "json_object" },
       }),

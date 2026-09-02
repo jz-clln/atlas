@@ -90,9 +90,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { message, history } = (req.body ?? {}) as { message?: string; history?: ChatMessage[] };
+  const { message, history, lightweight } = (req.body ?? {}) as {
+    message?: string;
+    history?: ChatMessage[];
+    // Set by AtlasWidget for the read_library_file follow-up call only —
+    // that call already has everything it needs (the file content and the
+    // user's original question) embedded directly in `message`, so it has
+    // no use for the full dashboard context or the action-proposal rules.
+    // Skipping straight to a short prompt here avoids re-running all 9
+    // Supabase queries and re-sending the whole todos/schedule/goals/
+    // coursework/library JSON dump (plus the entire action-schema block)
+    // for a call that was never going to use any of it.
+    lightweight?: boolean;
+  };
   if (!message) {
     res.status(400).json({ error: "Missing message" });
+    return;
+  }
+
+  if (lightweight) {
+    const trimmedHistory = (history ?? []).slice(-MAX_HISTORY_MESSAGES);
+    const lightweightSystemPrompt = `You are Atlas, an academic assistant.
+Always address the user as "Sir" in your replies. Never use em dashes (—) — write in plain, natural
+spoken language, like a normal assistant talking to someone, not like a written essay.
+The user's message below already contains everything you need: some file content they asked you to
+read, and what they originally wanted from it. Just answer directly and helpfully using that content.
+Respond with STRICT JSON only, no prose outside it, in exactly this shape: {"reply": string}`;
+
+    const lightweightMessages = [
+      { role: "system", content: lightweightSystemPrompt },
+      ...trimmedHistory.map((m) => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.text,
+      })),
+      { role: "user", content: message },
+    ];
+
+    const liteRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        // Lower than the normal MAX_TOKENS on purpose — this path never
+        // needs to emit a generated PDF/file's worth of content, just a
+        // conversational answer about a file that's already been read.
+        max_completion_tokens: 1200,
+        messages: lightweightMessages,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!liteRes.ok) {
+      const bodyText = await liteRes.text().catch(() => "");
+      console.error(`OpenAI request failed (${liteRes.status}): ${bodyText}`);
+      res.status(502).json({ error: "Atlas model request failed" });
+      return;
+    }
+
+    const liteData = await liteRes.json();
+    const liteText = liteData.choices?.[0]?.message?.content ?? "";
+    try {
+      const clean = liteText.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      res.status(200).json({ reply: parsed.reply ?? liteText, action: null });
+    } catch {
+      res.status(200).json({ reply: liteText, action: null });
+    }
     return;
   }
 
@@ -267,13 +333,14 @@ Rules:
   useful material: tell them you don't have the content and ask them to share it.
 - "library.folders" lists every existing folder path (e.g. "Networks/Notes"), and "library.files" lists
   every file with its folder "path" ("" means the root) and "createdBy" ("user" for something they
-  uploaded, "atlas" for something you saved earlier. You know these files EXIST and WHERE, but you cannot
-  see what's inside a file with createdBy "user" (no text extraction exists yet for uploads) — if asked
-  to summarize or read one, say you can't see its contents yet and suggest they paste the text instead.
-  You CAN discuss the contents of a file you saved yourself (createdBy "atlas"), since you wrote it and
-  the content is still available to you from that turn's conversation if it's recent, but don't claim to
-  remember exact contents of an old one you generated in a previous session; offer to regenerate it or
-  fetch it back into the chat instead.
+  uploaded, "atlas" for something you saved earlier. You know these files EXIST and WHERE, but you do NOT
+  automatically see what's inside any of them — that would mean re-sending file contents on every single
+  message, which is wasteful. If the user wants a file's contents actually read or used, propose
+  "read_library_file" (see below) to fetch it on demand for that turn only, regardless of whether
+  createdBy is "user" or "atlas" — don't claim you already know its contents just because you wrote it,
+  since you don't have that from a past session. You CAN discuss a file you saved yourself earlier in
+  THIS SAME conversation without re-reading it, since its content is already right there in your own
+  recent reply.
 - Each course may have a "nickname" the user has set for it. If present, always refer to that course by
   its nickname in your replies instead of its raw Classroom name — that's what they've told you to call
   it. Still match on the real "id" (not the nickname) whenever an action needs a courseId.
@@ -357,6 +424,17 @@ Rules:
   "library.files" (using its "path" and "name") — never invent a path or filename. If nothing in
   "library.files" matches what they're describing, do not propose this action; tell them plainly you
   can't find it and ask them to check the name or folder.
+- If the user asks you to READ, OPEN AND EXPLAIN, LOOK AT, or otherwise actually use the CONTENTS of a
+  specific file (e.g. "read Array.h for me", "what does main.cpp say", "open the template and explain
+  it", "check my notes file and summarize it"), propose a "read_library_file" action instead of
+  fetch_from_library. Match "folderPath" and "filename" EXACTLY against an entry in "library.files", same
+  rule as fetch_from_library — never invent one, and if nothing matches, don't propose this action, just
+  say you can't find it. You do NOT have this file's contents yet in this turn — they get fetched and
+  handed to you in a follow-up turn after this action runs. So keep "reply" this turn to a short
+  acknowledgement only (e.g. "Let me take a look, Sir.") — never guess, summarize, or make up what the
+  file might contain before you've actually seen it. Only propose this when they clearly want the
+  content read/used, not just located — a plain "get me X" or "open X" with no further intent is
+  fetch_from_library, not this.
 - Only include an action when the request clearly calls for one; otherwise action is null. Propose at
   most ONE action per reply, whichever type best matches what the user asked for.
 - Pick courseId/courseName only from the real "courses" list above — never invent a course. If "courses"
@@ -378,6 +456,7 @@ Rules:
   | {"type": "create_file", "file": {"filename": string, "content": string}}
   | {"type": "save_to_library", "library": {"folderPath": string, "filename": string, "content": string, "kind": "text" | "pdf"}}
   | {"type": "fetch_from_library", "libraryFetch": {"folderPath": string, "filename": string}}
+  | {"type": "read_library_file", "libraryRead": {"folderPath": string, "filename": string}}
 }
 - Days of week: 0 = Sunday ... 6 = Saturday. Times as 24-hour "HH:MM".
 - "reply" is what the user sees in chat — keep it short and conversational.`;

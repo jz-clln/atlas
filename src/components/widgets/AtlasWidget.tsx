@@ -39,13 +39,31 @@ type ChatAction =
   | { type: "generate_pdf"; pdf: { title: string; content: string } }
   | { type: "create_file"; file: { filename: string; content: string } }
   | { type: "save_to_library"; library: { folderPath: string; filename: string; content: string; kind: "text" | "pdf" } }
-  | { type: "fetch_from_library"; libraryFetch: { folderPath: string; filename: string } };
+  | { type: "fetch_from_library"; libraryFetch: { folderPath: string; filename: string } }
+  | { type: "read_library_file"; libraryRead: { folderPath: string; filename: string } };
 
 const ATLAS_CHAT_ENDPOINT = "/api/atlas/chat";
 const CLASSROOM_CREATE_ENDPOINT = "/api/classroom/create-task";
 const GENERATE_PDF_ENDPOINT = "/api/atlas/generate-pdf";
 const LIBRARY_BUCKET = "library";
 const LIBRARY_SIGNED_URL_TTL_SECONDS = 3600;
+// Extensions we know are safe to read as plain text — code and text formats
+// only. Deliberately excludes anything binary (images, PDFs, docx, etc.);
+// reading those as text would just produce garbage. Browsers report
+// inconsistent/empty MIME types for most of these (especially source code),
+// so matching by extension is more reliable than trusting file.type here.
+const READABLE_TEXT_EXTENSIONS = new Set([
+  "txt", "md", "markdown", "json", "csv", "tsv", "log", "yaml", "yml", "toml",
+  "ini", "cfg", "env", "xml", "html", "htm", "css", "scss",
+  "c", "h", "cpp", "hpp", "cc", "cxx", "java", "py", "js", "jsx", "ts", "tsx",
+  "go", "rb", "php", "swift", "kt", "kts", "rs", "r", "m", "pl", "lua", "sql",
+  "sh", "bat", "ps1",
+]);
+// Keeps a single follow-up call's file content within a sane token budget —
+// generous for a homework-sized file, but stops something like an entire
+// textbook accidentally uploaded as .txt from blowing past the model's
+// context/cost limits in one go.
+const MAX_READ_FILE_CHARS = 12000;
 
 /**
  * Row shape returned by the `.select("id")` queries below. Declared once and
@@ -467,6 +485,85 @@ export function AtlasWidget({ greeting }: Props) {
           setHistory((h) => [
             ...h,
             { role: "atlas", text: "Couldn't pull that up from your library, Sir. Try again?" },
+          ]);
+        }
+      } else if (data.action?.type === "read_library_file" && userId) {
+        const lookup = data.action.libraryRead;
+        try {
+          const { id: folderId, found } = await resolveFolderId(userId, lookup.folderPath);
+          if (!found) {
+            setHistory((h) => [
+              ...h,
+              { role: "atlas", text: `I can't find a "${lookup.folderPath}" folder in your library, Sir.` },
+            ]);
+          } else {
+            const query = supabase
+              .from("library_files")
+              .select("name, storage_path")
+              .eq("user_id", userId)
+              .eq("name", lookup.filename);
+            const fileResult =
+              folderId === null
+                ? await query.is("folder_id", null).maybeSingle()
+                : await query.eq("folder_id", folderId).maybeSingle();
+            const fileRow = fileResult.data;
+
+            if (!fileRow) {
+              setHistory((h) => [
+                ...h,
+                { role: "atlas", text: `I can't find "${lookup.filename}" in there, Sir.` },
+              ]);
+              return;
+            }
+
+            const ext = lookup.filename.split(".").pop()?.toLowerCase() ?? "";
+            if (!READABLE_TEXT_EXTENSIONS.has(ext)) {
+              setHistory((h) => [
+                ...h,
+                {
+                  role: "atlas",
+                  text: `I can only read plain text and code files right now, Sir — "${lookup.filename}" isn't one I can open yet.`,
+                },
+              ]);
+              return;
+            }
+
+            // .download() pulls the actual bytes directly (no signed URL
+            // round-trip needed, since this is a private read, not
+            // something the user needs a link to).
+            const { data: blob, error: downloadError } = await supabase.storage
+              .from(LIBRARY_BUCKET)
+              .download(fileRow.storage_path);
+            if (downloadError || !blob) throw downloadError ?? new Error("No file data");
+
+            const rawContent = await blob.text();
+            const wasTruncated = rawContent.length > MAX_READ_FILE_CHARS;
+            const content = wasTruncated ? rawContent.slice(0, MAX_READ_FILE_CHARS) : rawContent;
+
+            // A one-off follow-up call, separate from the visible chat
+            // history — the raw file dump never appears as a message
+            // bubble, only Atlas's real reply about it does. This is what
+            // keeps the read "on demand" rather than something that costs
+            // tokens on every future message: the content is used once,
+            // right here, and not stored back into context afterward.
+            const followUpMessage = `[Contents of "${lookup.filename}", fetched because I asked you to read it${
+              wasTruncated ? " — truncated to the first part, the actual file is longer" : ""
+            }]\n\n${content}\n\n[End of file contents]\n\nUsing the file above, please respond to what I originally asked: "${trimmed}"`;
+
+            const followUpRes = await fetch(ATLAS_CHAT_ENDPOINT, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+              body: JSON.stringify({ message: followUpMessage, history, lightweight: true }),
+            });
+            if (!followUpRes.ok) throw new Error(`Atlas endpoint returned ${followUpRes.status}`);
+
+            const followUpData: { reply: string; action: ChatAction | null } = await followUpRes.json();
+            setHistory((h) => [...h, { role: "atlas", text: followUpData.reply }]);
+          }
+        } catch {
+          setHistory((h) => [
+            ...h,
+            { role: "atlas", text: "Couldn't read that file, Sir. Try again?" },
           ]);
         }
       }

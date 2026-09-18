@@ -4,7 +4,7 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
     throw new Error("Missing ELEVENLABS_API_KEY server env var.");
   }
 
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || "Fahco4VZzobUeiPqni1S";
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || "ZoiZ8fuDWInAcwPXaVeq";
 
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",

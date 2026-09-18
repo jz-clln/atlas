@@ -18,7 +18,7 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
     },
     body: JSON.stringify({
       text,
-      model_id: "eleven_turbo_v2_5",
+      model_id: "eleven_turbo_v2",
     }),
   });
 
